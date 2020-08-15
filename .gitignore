@@ -1,0 +1,8 @@
+
+.ipynb_checkpoints/
+
+__pycache__/
+
+Datasets/HARDataset/.DS_Store
+
+HARDataset/.DS_Store

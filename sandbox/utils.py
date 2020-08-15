@@ -3,13 +3,13 @@ from numpy import std
 from numpy import dstack
 from pandas import read_csv
 from matplotlib import pyplot
-from keras.utils import to_categorical
+#from keras.utils import to_categorical
 
 # load a single file as a numpy array
 def load_file(filepath):
 	dataframe = read_csv(filepath, header=None, delim_whitespace=True)
 	return dataframe.values
-	
+
 # load a list of files and return as a 3d numpy array
 def load_group(filenames, prefix=''):
 	loaded = list()
@@ -19,7 +19,7 @@ def load_group(filenames, prefix=''):
 	# stack group so that features are the 3rd dimension
 	loaded = dstack(loaded)
 	return loaded
-	
+
 # load a dataset group, such as train or test
 def load_dataset_group(group, prefix=''):
 	filepath = prefix + group + '/Inertial Signals/'
@@ -36,7 +36,7 @@ def load_dataset_group(group, prefix=''):
 	# load class output
 	y = load_file(prefix + group + '/y_'+group+'.txt')
 	return X, y
-	
+
 # load the dataset, returns train and test X and y elements
 def load_dataset(prefix=''):
 	# load all train
@@ -49,7 +49,7 @@ def load_dataset(prefix=''):
 	trainy = trainy - 1
 	testy = testy - 1
 	# one hot encode y
-	trainy = to_categorical(trainy)
-	testy = to_categorical(testy)
+	#trainy = to_categorical(trainy)
+	#testy = to_categorical(testy)
 	print(trainX.shape, trainy.shape, testX.shape, testy.shape)
 	return trainX, trainy, testX, testy
