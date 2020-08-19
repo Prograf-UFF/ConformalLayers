@@ -1,5 +1,7 @@
 from .module import ConformalModule
+from .utils import EyeTensor
 from abc import abstractmethod
+from typing import Union
 import torch
 
 
@@ -9,24 +11,17 @@ class BaseDropout(ConformalModule):
 
     @property
     @abstractmethod
-    def tensor(self) -> torch.Tensor:
+    def tensor(self) -> Union[torch.Tensor, EyeTensor]:
         pass
-
-
-class NoDropout(BaseDropout):
-    def __init__(self):
-        super(NoDropout, self).__init__()
-
-    @property
-    def tensor(self) -> torch.Tensor:
-        #TODO return torch.eye(n, m)
-        raise NotImplementedError("To be implemented")
 
 
 class Dropout(BaseDropout):
     def __init__(self, rate: float):
         super(Dropout, self).__init__()
-        self.__rate = rate
+        self._rate = rate
+
+    def __repr__(self) -> str:
+       return "Dropout(rate={})".format(self._rate)
 
     @property
     def tensor(self) -> torch.Tensor:
@@ -35,4 +30,23 @@ class Dropout(BaseDropout):
 
     @property
     def rate(self) -> float:
-        return self.__rate
+        return self._rate
+
+
+class NoDropout(BaseDropout):
+    _instance = None
+
+    def __init__(self):
+        super(NoDropout, self).__init__()
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
+    def __repr__(self) -> str:
+       return "NoDropout()"
+
+    @property
+    def tensor(self) -> EyeTensor:
+        return EyeTensor()
