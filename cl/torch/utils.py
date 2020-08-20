@@ -1,12 +1,24 @@
-from typing import Union
-import functools, torch
+from itertools import repeat
+from typing import Tuple, Union
+import collections, functools, torch
 
 
 HANDLED_FUNCTIONS = {}
 
 
+def implements(torch_function):
+    @functools.wraps(torch_function)
+    def decorator(func):
+        HANDLED_FUNCTIONS[torch_function] = func
+        return func
+    return decorator
+
+
 class EyeTensor:
     _instance = None
+
+    def __init__(self) -> None:
+        super(EyeTensor, self).__init__()
 
     def __new__(cls):
         if cls._instance is None:
@@ -30,6 +42,9 @@ class EyeTensor:
 class ZeroTensor:
     _instance = None
 
+    def __init__(self) -> None:
+        super(ZeroTensor, self).__init__()
+
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super().__new__(cls)
@@ -49,16 +64,8 @@ class ZeroTensor:
         return self
 
 
-def implements(torch_function):
-    @functools.wraps(torch_function)
-    def decorator(func):
-        HANDLED_FUNCTIONS[torch_function] = func
-        return func
-    return decorator
-
-
 @implements(torch.add)
-def add(lhs: Union[torch.Tensor, EyeTensor, ZeroTensor], rhs: Union[torch.Tensor, EyeTensor, ZeroTensor]):
+def _add(lhs: Union[torch.Tensor, EyeTensor, ZeroTensor], rhs: Union[torch.Tensor, EyeTensor, ZeroTensor]) -> Union[torch.Tensor, EyeTensor, ZeroTensor]:
     if isinstance(lhs, ZeroTensor):
         if isinstance(rhs, ZeroTensor):
             return ZeroTensor()
@@ -72,7 +79,7 @@ def add(lhs: Union[torch.Tensor, EyeTensor, ZeroTensor], rhs: Union[torch.Tensor
 
 
 @implements(torch.chain_matmul)
-def chain_matmul(*args):
+def _chain_matmul(*args) -> Union[torch.Tensor, EyeTensor, ZeroTensor]:
     if any(map(lambda arg: isinstance(arg, ZeroTensor), args)):
         return ZeroTensor()
     tensors = (arg for arg in args if not isinstance(arg, EyeTensor))
@@ -83,7 +90,7 @@ def chain_matmul(*args):
 
 
 @implements(torch.matmul)
-def matmul(lhs: Union[torch.Tensor, EyeTensor, ZeroTensor], rhs: Union[torch.Tensor, EyeTensor, ZeroTensor]):
+def _matmul(lhs: Union[torch.Tensor, EyeTensor, ZeroTensor], rhs: Union[torch.Tensor, EyeTensor, ZeroTensor]) -> Union[torch.Tensor, EyeTensor, ZeroTensor]:
     if isinstance(lhs, ZeroTensor) or isinstance(rhs, ZeroTensor):
         return ZeroTensor()
     if isinstance(lhs, EyeTensor):
@@ -96,3 +103,21 @@ def matmul(lhs: Union[torch.Tensor, EyeTensor, ZeroTensor], rhs: Union[torch.Ten
             return lhs.clone()
         else:
             return torch.matmul(lhs, rhs)
+
+
+def _ntuple(n: int) -> Union[collections.abc.Iterable, Tuple[int, ...]]:
+    def parse(x):
+        if isinstance(x, collections.abc.Iterable):
+            return x
+        return tuple(repeat(x, n))
+    return parse
+
+
+_single = _ntuple(1)
+_pair = _ntuple(2)
+_triple = _ntuple(3)
+
+_int_or_size_1_t = Union[int, Tuple[int]]
+_int_or_size_2_t = Union[int, Tuple[int, int]]
+_int_or_size_3_t = Union[int, Tuple[int, int, int]]
+_size_any_t = Tuple[int, ...]

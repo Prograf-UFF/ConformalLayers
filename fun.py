@@ -1,12 +1,18 @@
-from cl.pytorch import ConformalLayers, AveragePooling, Dropout
+import torch
+import cl.torch as cl
 
 
 def main():
-    clayers = ConformalLayers()
-    clayers.enqueue_module(Dropout(3))
-    clayers.enqueue_module(AveragePooling(2))
-    clayers.enqueue_module(Dropout(4))
+    clayers = cl.ConformalLayers()
+    clayers.enqueue_modules(
+        cl.Conv1d(1, 1, 5),
+        cl.Dropout(0.5),
+        cl.Conv1d(1, 1, 3),
+        cl.SRePro(),
+        cl.AvgPool1d(2)
+    )
     print(clayers)
+    print()
 
 
 if __name__ == "__main__":
