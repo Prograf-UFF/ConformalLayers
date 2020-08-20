@@ -1,5 +1,5 @@
 from itertools import repeat
-from typing import Tuple, Union
+from typing import Iterable, Tuple, Union
 import collections, functools, torch
 
 
@@ -105,9 +105,9 @@ def _matmul(lhs: Union[torch.Tensor, EyeTensor, ZeroTensor], rhs: Union[torch.Te
             return torch.matmul(lhs, rhs)
 
 
-def _ntuple(n: int) -> Union[collections.abc.Iterable, Tuple[int, ...]]:
+def _ntuple(n: int) -> Union[Iterable[int], Tuple[int, ...]]:
     def parse(x):
-        if isinstance(x, collections.abc.Iterable):
+        if isinstance(x, Iterable):
             return x
         return tuple(repeat(x, n))
     return parse

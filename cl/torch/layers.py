@@ -3,6 +3,7 @@ from .convolution import BaseConv, NoConv
 from .dropout import BaseDropout, NoDropout
 from .module import ConformalModule
 from .pooling import BasePool, NoPool
+from typing import Iterator
 import torch
 
 
@@ -61,6 +62,9 @@ class ConformalLayers(torch.nn.Module):
     def __getitem__(self, index: int) -> ConformalLayer:
         return self._layers[index]
 
+    def __iter__(self) -> Iterator[ConformalLayer]:
+        return iter(self._layers)
+    
     def __len__(self) -> int:
         return len(self._layers)
 
@@ -96,15 +100,16 @@ class ConformalLayers(torch.nn.Module):
         self.invalidate_cache()
         module._register_parent(self, len(self._layers)-1)
 
-    def enqueue_modules(self, module1: ConformalModule, *other: ConformalModule) -> None:
-        self.enqueue_module(module1)
-        for module in other:
+    def enqueue_modules(self, module: ConformalModule, *args: ConformalModule) -> None:
+        self.enqueue_module(module)
+        for module in args:
             self.enqueue_module(module)
 
     def forward(self, x):
         self._update_cache()
+        #TODO Inclusão da coordenada homogênea em x
         y = torch.matmul(torch.add(self._cached_left_tensor, torch.matmul(self._cached_right_tensor, x)), x)
-        #TODO Normalização da coordenada homogênea
+        #TODO Normalização da coordenada homogênea e remoção da coordenada homogênea de y
         return y
 
     def invalidate_cache(self) -> None:
