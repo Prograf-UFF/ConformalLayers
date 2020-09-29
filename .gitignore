@@ -2,3 +2,4 @@
 __pycache__/
 Datasets/HARDataset/.DS_Store
 HARDataset/.DS_Store
+/.vscode

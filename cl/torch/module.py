@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import Optional, Tuple
 
 
 class ConformalModule(ABC):
@@ -8,9 +8,14 @@ class ConformalModule(ABC):
         self._name = name
 
     def _extra_repr(self, comma: bool) -> str:
-        return "" if self._name is None else "{}name={}".format(", " if comma else "", self._name)
+        return '' if self._name is None else f'{", " if comma else ""}name={self._name}'
 
-    def _register_parent(self, parent, layer: int) -> None:
+    @abstractmethod
+    def _output_size(self, in_channels: int, in_volume: Tuple[int, ...]) -> Tuple[int, Tuple[int, ...]]:
+        pass
+    
+    @abstractmethod
+    def _register_parent(self, parent, index: int) -> None:
         pass
 
     @property

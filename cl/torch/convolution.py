@@ -1,69 +1,117 @@
 from .module import ConformalModule
-from .utils import EyeTensor, _int_or_size_1_t, _int_or_size_2_t, _int_or_size_3_t, _size_any_t, _pair, _single, _triple
+from .utils import _int_or_size_1_t, _int_or_size_2_t, _int_or_size_3_t, _size_any_t, _pair, _single, _triple
 from abc import abstractmethod
-from typing import Optional, Union
-import torch
+from typing import Optional, Tuple
+import MinkowskiEngine as me
+import numpy, torch
 
 
-class BaseConv(ConformalModule):
-    def __init__(self, name: Optional[str]=None) -> None:
-        super(BaseConv, self).__init__(name)
+class _WrappedMinkowskiConvolution(me.MinkowskiConvolution):
+    def __init__(self, padding: Tuple[int, ...], *args, **kwargs) -> None:
+        super(_WrappedMinkowskiConvolution, self).__init__(*args, **kwargs)
+        self._padding = torch.as_tensor(padding, dtype=torch.int32)
+        # Compute some constant values and keep them
+        temp = self.kernel_size.sub(1).floor_divide(2).mul(self.kernel_size.remainder(2)).mul(self.dilation)
+        self._index_start_offset = temp.sub(self.padding)
+        self._index_end_offset = temp.add(self.padding).sub(self.kernel_size.sub(1).mul(self.dilation)).add(1)
+
+    def forward(self, input: me.SparseTensor) -> me.SparseTensor:
+        in_coords = input.coords
+        min_in_coords = in_coords.min(0, keepdim=True)[0].view(-1)
+        max_in_coords = in_coords.max(0, keepdim=True)[0].view(-1)
+        # Compute the complete set of coordinates for evaluating the module
+        indices = torch.stack(torch.meshgrid(*map(lambda start, end, step: torch.arange(int(start), int(end), int(step), dtype=torch.int32),
+            min_in_coords[1:].add(self._index_start_offset),
+            max_in_coords[1:].add(self._index_end_offset),
+            self.stride
+        )), dim=-1).view(-1, input.dimension)
+        batches = torch.arange(min_in_coords[0], max_in_coords[0] + 1, dtype=torch.int32).view(-1, 1)
+        # Evaluate the module considering only a subset of the complete set of coordinates per batch
+        coords = torch.cat((
+            batches.repeat_interleave(len(indices), dim=0),
+            indices.repeat(max_in_coords[0] - min_in_coords[0] + 1, 1)  #TODO Nem todo indice precisa estar em todo batch
+        ), dim=1)
+        result = super().forward(input, coords)
+        # Compress the resulting tensor coordinates
+        if self.stride.ne(1).any():
+            result = me.SparseTensor(
+                coords=result.coords.sub(torch.cat((torch.zeros((1,), dtype=torch.int32), indices[0, :]))).floor_divide(torch.cat((torch.ones((1,), dtype=torch.int32), stride))),
+                feats=result.feats
+            )
+        # Return the resulting tensor
+        return result
 
     @property
-    @abstractmethod
-    def tensor(self) -> Union[torch.Tensor, EyeTensor]:
-        pass
+    def padding(self) -> Tuple[int, ...]:
+        return self._padding
 
 
-class ConvNd(BaseConv):
+class ConvNd(ConformalModule):
     def __init__(self,
                  in_channels: int,
                  out_channels: int,
                  kernel_size: _size_any_t,
-                 transposed: bool=False,
-                 bias: bool=True,
+                 stride: _size_any_t,
+                 padding: _size_any_t,
+                 dilation: _size_any_t,
+                 transposed: bool=False, #TODO Como lidar com transposto?
                  name: Optional[str]=None) -> None:
         super(ConvNd, self).__init__(name)
-        self._in_channels = in_channels
-        self._out_channels = out_channels
-        self._kernel_size = kernel_size
-        self._transposed = transposed
-        if transposed:
-            self._weights = torch.nn.Parameter(torch.Tensor(in_channels, out_channels, *kernel_size))
-        else:
-            self._weights = torch.nn.Parameter(torch.Tensor(out_channels, in_channels, *kernel_size))
-        self._bias = torch.nn.Parameter(torch.Tensor(out_channels)) if bias else None
+        self._native = _WrappedMinkowskiConvolution(
+            in_channels=in_channels,
+            out_channels=out_channels,
+            kernel_size=kernel_size,
+            stride=stride,
+            padding=padding,
+            dilation=dilation,
+            dimension=len(kernel_size),
+            has_bias=False)
 
     def __repr__(self) -> str:
-       return "Conv(in_channels={}, out_channels={}, kernel_size={}, transposed={}, bias={}{})".format(self._in_channels, self._out_channels, self._kernel_size, self._transposed, self._bias is not None, self._extra_repr(True))
+       return f'Conv(in_channels={self.in_channels}, out_channels={self.out_channels}, kernel_size={*map(int, self.kernel_size),}, stride={*map(int, self.stride),}, padding={*map(int, self.padding),}, dilation={*map(int, self.dilation),}, transposed={self.transposed}{self._extra_repr(True)})'
 
-    def _register_parent(self, parent, layer: int) -> None:
-        parent.register_parameter("clayer[{}]-{}-weights".format(layer, "conv" if self._name is None else self._name), self._weights)
-        self._weights.register_hook(lambda _: parent.invalidate_cache())
-        if self._bias is not None:
-            parent.register_parameter("clayer[{}]-{}-bias".format(layer, "conv" if self._name is None else self._name), self._bias)
-            self._bias.register_hook(lambda _: parent.invalidate_cache())
+    def _output_size(self, in_channels: int, in_volume: Tuple[int, ...]) -> Tuple[int, Tuple[int, ...]]:
+        return self.out_channels, tuple(map(int, numpy.floor(numpy.add(numpy.true_divide(numpy.add(in_volume, numpy.subtract(numpy.subtract(numpy.multiply(self.padding, 2), numpy.multiply(self.dilation, numpy.subtract(self.kernel_size, 1))), 1)), self.stride), 1))))
+
+    def _register_parent(self, parent, index: int) -> None:
+        parent.register_parameter(f'Conv{index}' if self._name is None else self._name, self._native.kernel)
+        self._native.kernel.register_hook(lambda _: parent.invalidate_cache())
 
     @property
-    def bias(self) -> Optional[torch.nn.Parameter]:
-        return self._bias
+    def in_channels(self) -> int:
+        return self._native.in_channels
+
+    @property
+    def out_channels(self) -> int:
+        return self._native.out_channels
 
     @property
     def kernel_size(self) -> _size_any_t:
-        return self._kernel_size
+        return self._native.kernel_size
 
     @property
-    def tensor(self) -> torch.Tensor:
-        #TODO To be implemented
-        raise NotImplementedError("To be implemented")
+    def stride(self) -> _size_any_t:
+        return self._native.stride
+
+    @property
+    def padding(self) -> _size_any_t:
+        return self._native.padding
+
+    @property
+    def dilation(self) -> _size_any_t:
+        return self._native.dilation
+
+    @property
+    def dimension(self) -> int:
+        return self._native.dimension
 
     @property
     def transposed(self) -> bool:
-        return self._transposed
+        return self._native.is_transpose
 
     @property
-    def weights(self) -> torch.nn.Parameter:
-        return self._weights
+    def kernel(self) -> torch.nn.Parameter:
+        return self._native.kernel
 
 
 class Conv1d(ConvNd):
@@ -71,15 +119,19 @@ class Conv1d(ConvNd):
                  in_channels: int,
                  out_channels: int,
                  kernel_size: _int_or_size_1_t,
-                 bias: bool=True,
+                 stride: _int_or_size_1_t,
+                 padding: _int_or_size_1_t,
+                 dilation: _int_or_size_1_t,
                  name: Optional[str]=None) -> None:
         super(Conv1d, self).__init__(
-            in_channels,
-            out_channels,
-            _single(kernel_size),
-            False,
-            bias,
-            name)
+            in_channels=in_channels,
+            out_channels=out_channels,
+            kernel_size=_single(kernel_size),
+            stride=_single(stride),
+            padding=_single(padding),
+            dilation=_single(dilation),
+            transposed=False,
+            name=name)
 
 
 class Conv2d(ConvNd):
@@ -87,15 +139,19 @@ class Conv2d(ConvNd):
                  in_channels: int,
                  out_channels: int,
                  kernel_size: _int_or_size_2_t,
-                 bias: bool=True,
+                 stride: _int_or_size_2_t,
+                 padding: _int_or_size_2_t,
+                 dilation: _int_or_size_2_t,
                  name: Optional[str]=None) -> None:
         super(Conv2d, self).__init__(
-            in_channels,
-            out_channels,
-            _pair(kernel_size),
-            False,
-            bias,
-            name)
+            in_channels=in_channels,
+            out_channels=out_channels,
+            kernel_size=_pair(kernel_size),
+            stride=_pair(stride),
+            padding=_pair(padding),
+            dilation=_pair(dilation),
+            transposed=False,
+            name=name)
 
 
 class Conv3d(ConvNd):
@@ -103,15 +159,19 @@ class Conv3d(ConvNd):
                  in_channels: int,
                  out_channels: int,
                  kernel_size: _int_or_size_3_t,
-                 bias: bool=True,
+                 stride: _int_or_size_3_t,
+                 padding: _int_or_size_3_t,
+                 dilation: _int_or_size_3_t,
                  name: Optional[str]=None) -> None:
         super(Conv3d, self).__init__(
-            in_channels,
-            out_channels,
-            _triple(kernel_size),
-            False,
-            bias,
-            name)
+            in_channels=in_channels,
+            out_channels=out_channels,
+            kernel_size=_triple(kernel_size),
+            stride=_triple(stride),
+            padding=_triple(padding),
+            dilation=_triple(dilation),
+            transposed=False,
+            name=name)
 
 
 class ConvTransposeNd(ConvNd):
@@ -119,15 +179,19 @@ class ConvTransposeNd(ConvNd):
                  in_channels: int,
                  out_channels: int,
                  kernel_size: _size_any_t,
-                 bias: bool=True,
+                 stride: _size_any_t,
+                 padding: _size_any_t,
+                 dilation: _size_any_t,
                  name: Optional[str]=None) -> None:
         super(ConvTransposeNd, self).__init__(
-            in_channels,
-            out_channels,
-            kernel_size,
-            True,
-            bias,
-            name)
+            in_channels=in_channels,
+            out_channels=out_channels,
+            kernel_size=kernel_size,
+            stride=stride,
+            padding=padding,
+            dilation=dilation,
+            transposed=True,
+            name=name)
 
 
 class ConvTranspose1d(ConvNd):
@@ -135,15 +199,19 @@ class ConvTranspose1d(ConvNd):
                  in_channels: int,
                  out_channels: int,
                  kernel_size: _int_or_size_1_t,
-                 bias: bool=True,
+                 stride: _int_or_size_1_t,
+                 padding: _int_or_size_1_t,
+                 dilation: _int_or_size_1_t,
                  name: Optional[str]=None) -> None:
         super(ConvTranspose1d, self).__init__(
-            in_channels,
-            out_channels,
-            _single(kernel_size),
-            True,
-            bias,
-            name)
+            in_channels=in_channels,
+            out_channels=out_channels,
+            kernel_size=_single(kernel_size),
+            stride=_single(stride),
+            padding=_single(padding),
+            dilation=_single(dilation),
+            transposed=True,
+            name=name)
 
 
 class ConvTranspose2d(ConvNd):
@@ -151,15 +219,19 @@ class ConvTranspose2d(ConvNd):
                  in_channels: int,
                  out_channels: int,
                  kernel_size: _int_or_size_2_t,
-                 bias: bool=True,
+                 stride: _int_or_size_2_t,
+                 padding: _int_or_size_2_t,
+                 dilation: _int_or_size_2_t,
                  name: Optional[str]=None) -> None:
         super(ConvTranspose2d, self).__init__(
-            in_channels,
-            out_channels,
-            _pair(kernel_size),
-            True,
-            bias,
-            name)
+            in_channels=in_channels,
+            out_channels=out_channels,
+            kernel_size=_pair(kernel_size),
+            stride=_pair(stride),
+            padding=_pair(padding),
+            dilation=_pair(dilation),
+            transposed=True,
+            name=name)
 
 
 class ConvTranspose3d(ConvNd):
@@ -167,31 +239,16 @@ class ConvTranspose3d(ConvNd):
                  in_channels: int,
                  out_channels: int,
                  kernel_size: _int_or_size_3_t,
-                 bias: bool=True,
+                 stride: _int_or_size_3_t,
+                 padding: _int_or_size_3_t,
+                 dilation: _int_or_size_3_t,
                  name: Optional[str]=None) -> None:
         super(ConvTranspose3d, self).__init__(
-            in_channels,
-            out_channels,
-            _triple(kernel_size),
-            True,
-            bias,
-            name)
-
-
-class NoConv(BaseConv):
-    _instance = None
-
-    def __init__(self):
-        super(NoConv, self).__init__("NoConv")
-
-    def __new__(cls) -> None:
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-        return cls._instance
-
-    def __repr__(self) -> str:
-       return "NoConv()"
-
-    @property
-    def tensor(self) -> EyeTensor:
-        return EyeTensor()
+            in_channels=in_channels,
+            out_channels=out_channels,
+            kernel_size=_triple(kernel_size),
+            stride=_triple(stride),
+            padding=_triple(padding),
+            dilation=_triple(dilation),
+            transposed=True,
+            name=name)
