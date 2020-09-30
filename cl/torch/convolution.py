@@ -1,48 +1,41 @@
-from .module import ConformalModule
+from .module import _MinkowskiModuleWrapper, ConformalModule
 from .utils import _int_or_size_1_t, _int_or_size_2_t, _int_or_size_3_t, _size_any_t, _pair, _single, _triple
-from abc import abstractmethod
 from typing import Optional, Tuple
 import MinkowskiEngine as me
 import numpy, torch
 
 
 class _WrappedMinkowskiConvolution(me.MinkowskiConvolution):
-    def __init__(self, padding: Tuple[int, ...], *args, **kwargs) -> None:
+    def __init__(self, padding: _size_any_t, *args, **kwargs) -> None:
         super(_WrappedMinkowskiConvolution, self).__init__(*args, **kwargs)
         self._padding = torch.as_tensor(padding, dtype=torch.int32)
-        # Compute some constant values and keep them
-        temp = self.kernel_size.sub(1).floor_divide(2).mul(self.kernel_size.remainder(2)).mul(self.dilation)
-        self._index_start_offset = temp.sub(self.padding)
-        self._index_end_offset = temp.add(self.padding).sub(self.kernel_size.sub(1).mul(self.dilation)).add(1)
+        self._wrapper = _MinkowskiModuleWrapper(self)
+
+    def _super_forward(self, input: me.SparseTensor, coords: torch.IntTensor) -> me.SparseTensor:
+        return super().forward(input, coords)
 
     def forward(self, input: me.SparseTensor) -> me.SparseTensor:
-        in_coords = input.coords
-        min_in_coords = in_coords.min(0, keepdim=True)[0].view(-1)
-        max_in_coords = in_coords.max(0, keepdim=True)[0].view(-1)
-        # Compute the complete set of coordinates for evaluating the module
-        indices = torch.stack(torch.meshgrid(*map(lambda start, end, step: torch.arange(int(start), int(end), int(step), dtype=torch.int32),
-            min_in_coords[1:].add(self._index_start_offset),
-            max_in_coords[1:].add(self._index_end_offset),
-            self.stride
-        )), dim=-1).view(-1, input.dimension)
-        batches = torch.arange(min_in_coords[0], max_in_coords[0] + 1, dtype=torch.int32).view(-1, 1)
-        # Evaluate the module considering only a subset of the complete set of coordinates per batch
-        coords = torch.cat((
-            batches.repeat_interleave(len(indices), dim=0),
-            indices.repeat(max_in_coords[0] - min_in_coords[0] + 1, 1)  #TODO Nem todo indice precisa estar em todo batch
-        ), dim=1)
-        result = super().forward(input, coords)
-        # Compress the resulting tensor coordinates
-        if self.stride.ne(1).any():
-            result = me.SparseTensor(
-                coords=result.coords.sub(torch.cat((torch.zeros((1,), dtype=torch.int32), indices[0, :]))).floor_divide(torch.cat((torch.ones((1,), dtype=torch.int32), stride))),
-                feats=result.feats
-            )
-        # Return the resulting tensor
-        return result
+        return self._wrapper.forward(input)
 
     @property
-    def padding(self) -> Tuple[int, ...]:
+    def padding(self) -> torch.IntTensor:
+        return self._padding
+
+
+class _WrappedMinkowskiConvolutionTranspose(me.MinkowskiConvolutionTranspose):
+    def __init__(self, padding: _size_any_t, *args, **kwargs) -> None:
+        super(_WrappedMinkowskiConvolutionTranspose, self).__init__(*args, **kwargs)
+        self._padding = torch.as_tensor(padding, dtype=torch.int32)
+        self._wrapper = _MinkowskiModuleWrapper(self)
+
+    def _super_forward(self, input: me.SparseTensor, coords: torch.IntTensor) -> me.SparseTensor:
+        return super().forward(input, coords)
+
+    def forward(self, input: me.SparseTensor) -> me.SparseTensor:
+        return self._wrapper.forward(input)
+
+    @property
+    def padding(self) -> torch.IntTensor:
         return self._padding
 
 
@@ -54,10 +47,11 @@ class ConvNd(ConformalModule):
                  stride: _size_any_t,
                  padding: _size_any_t,
                  dilation: _size_any_t,
-                 transposed: bool=False, #TODO Como lidar com transposto?
+                 transposed: bool=False,
                  name: Optional[str]=None) -> None:
         super(ConvNd, self).__init__(name)
-        self._native = _WrappedMinkowskiConvolution(
+        WrappedModuleClass = _WrappedMinkowskiConvolutionTranspose if transposed else _WrappedMinkowskiConvolution
+        self._native = WrappedModuleClass(
             in_channels=in_channels,
             out_channels=out_channels,
             kernel_size=kernel_size,
@@ -70,7 +64,7 @@ class ConvNd(ConformalModule):
     def __repr__(self) -> str:
        return f'Conv(in_channels={self.in_channels}, out_channels={self.out_channels}, kernel_size={*map(int, self.kernel_size),}, stride={*map(int, self.stride),}, padding={*map(int, self.padding),}, dilation={*map(int, self.dilation),}, transposed={self.transposed}{self._extra_repr(True)})'
 
-    def _output_size(self, in_channels: int, in_volume: Tuple[int, ...]) -> Tuple[int, Tuple[int, ...]]:
+    def _output_size(self, in_channels: int, in_volume: _size_any_t) -> Tuple[int, _size_any_t]:
         return self.out_channels, tuple(map(int, numpy.floor(numpy.add(numpy.true_divide(numpy.add(in_volume, numpy.subtract(numpy.subtract(numpy.multiply(self.padding, 2), numpy.multiply(self.dilation, numpy.subtract(self.kernel_size, 1))), 1)), self.stride), 1))))
 
     def _register_parent(self, parent, index: int) -> None:
@@ -86,19 +80,19 @@ class ConvNd(ConformalModule):
         return self._native.out_channels
 
     @property
-    def kernel_size(self) -> _size_any_t:
+    def kernel_size(self) -> torch.IntTensor:
         return self._native.kernel_size
 
     @property
-    def stride(self) -> _size_any_t:
+    def stride(self) -> torch.IntTensor:
         return self._native.stride
 
     @property
-    def padding(self) -> _size_any_t:
+    def padding(self) -> torch.IntTensor:
         return self._native.padding
 
     @property
-    def dilation(self) -> _size_any_t:
+    def dilation(self) -> torch.IntTensor:
         return self._native.dilation
 
     @property

@@ -1,11 +1,12 @@
 from .activation import SRePro
 from .module import ConformalModule
+from .utils import _size_any_t
 from typing import Iterator, Tuple
 import MinkowskiEngine as me
 import numpy, operator, torch
 
 
-_cached_signature_t = Tuple[Tuple[int, Tuple[int, ...]], Tuple[int, Tuple[int, ...]]]
+_cached_signature_t = Tuple[Tuple[int, _size_any_t], Tuple[int, _size_any_t]]  # Format: ((in_channels, in_volume), (out_channels, out_volume))
 
 
 class ConformalLayers(torch.nn.Module):
@@ -35,12 +36,12 @@ class ConformalLayers(torch.nn.Module):
                 break
         # Initialize cached data with null values
         self._valid_cache = False
-        self._cached_signature = None # Format: ((in_channels, in_volume), (out_channels, out_volume))
+        self._cached_signature = None
         self._cached_left_tensor = None
         self._cached_right_tensor = None
 
     def __repr__(self) -> str:
-        return f'ConformalLayers({*self._modules,})'
+        return f'ConformalLayers{*self._modules,}'
 
     def __getitem__(self, index: int) -> ConformalModule:
         return self._modules[index]
@@ -51,7 +52,7 @@ class ConformalLayers(torch.nn.Module):
     def __len__(self) -> int:
         return len(self._modules)
 
-    def _update_cache(self, in_channels: int, in_volume: Tuple[int, ...]) -> _cached_signature_t:
+    def _update_cache(self, in_channels: int, in_volume: _size_any_t) -> _cached_signature_t:
         if not self._valid_cache or self._cached_signature[0] != (in_channels, in_volume):
             # Compute the number of channels and volume of the resulting batch entries
             out_channels, out_volume = in_channels, in_volume
@@ -78,6 +79,7 @@ class ConformalLayers(torch.nn.Module):
 
     def forward(self, input):
         batches, in_channels, *in_volume = input.shape
+        in_volume = tuple(in_volume)
         if not self._in_channels is None and in_channels != self._in_channels:
             raise RuntimeError(f'Expected input to have {self._in_channels} channels, but got {in_channels} channels instead.')
         # If necessary, update cached data
@@ -93,5 +95,9 @@ class ConformalLayers(torch.nn.Module):
         self._valid_cache = False
 
     @property
-    def cached_signature(self) -> Tuple[_cached_signature_t, bool]:
-        return self._cached_signature, self._valid_cache
+    def cached_signature(self) -> _cached_signature_t:
+        return self._cached_signature
+        
+    @property
+    def valid_cache(self) -> bool:
+        return self._valid_cache

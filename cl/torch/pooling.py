@@ -1,26 +1,29 @@
-from .module import ConformalModule
+from .module import _MinkowskiModuleWrapper, ConformalModule
 from .utils import _int_or_size_1_t, _int_or_size_2_t, _int_or_size_3_t, _size_any_t, _pair, _single, _triple
-from abc import abstractmethod
 from typing import Optional, Tuple
 import MinkowskiEngine as me
 import torch
 
 
 class _WrappedMinkowskiAvgPooling(me.MinkowskiAvgPooling):
-    def __init__(self, padding: Tuple[int, ...], *args, **kwargs) -> None:
+    def __init__(self, padding: _size_any_t, *args, **kwargs) -> None:
         super(_WrappedMinkowskiAvgPooling, self).__init__(*args, **kwargs)
+        self._stride = torch.ones(self.dimension(), dtype=torch.int32)
         self._padding = torch.as_tensor(padding, dtype=torch.int32)
-        # Compute some constant values and keep them
-        temp = self.kernel_size.sub(1).floor_divide(2).mul(self.kernel_size.remainder(2)).mul(self.dilation)
-        self._index_start_offset = temp.sub(self.padding)
-        self._index_end_offset = temp.add(self.padding).sub(self.kernel_size.sub(1).mul(self.dilation)).add(1)
+        self._wrapper = _MinkowskiModuleWrapper(self)
+
+    def _super_forward(self, input: me.SparseTensor, coords: torch.IntTensor) -> me.SparseTensor:
+        return super().forward(input, coords)
 
     def forward(self, input: me.SparseTensor) -> me.SparseTensor:
-        #TODO Implementar
-        raise NotImplementedError()
+        return self._wrapper.forward(input)
 
     @property
-    def padding(self) -> Tuple[int, ...]:
+    def stride(self) -> torch.IntTensor:
+        return self._stride
+
+    @property
+    def padding(self) -> torch.IntTensor:
         return self._padding
 
 
@@ -42,26 +45,23 @@ class AvgPoolNd(ConformalModule):
     def __repr__(self) -> str:
        return f'AvgPool(kernel_size={*map(int, self.kernel_size),}, stride={*map(int, self.stride),}, padding={*map(int, self.padding),}, dilation={*map(int, self.dilation),}{self._extra_repr(True)})'
 
-    def _output_size(self, in_channels: int, in_volume: Tuple[int, ...]) -> Tuple[int, Tuple[int, ...]]:
+    def _output_size(self, in_channels: int, in_volume: _size_any_t) -> Tuple[int, _size_any_t]:
         return in_channels, in_volume
 
-    def _register_parent(self, parent, index: int) -> None:
-        pass
-
     @property
-    def kernel_size(self) -> _size_any_t:
+    def kernel_size(self) -> torch.IntTensor:
         return self._native.kernel_size
 
     @property
-    def stride(self) -> _size_any_t:
+    def stride(self) -> torch.IntTensor:
         return self._native.stride
 
     @property
-    def padding(self) -> _size_any_t:
+    def padding(self) -> torch.IntTensor:
         return self._native.padding
 
     @property
-    def dilation(self) -> _size_any_t:
+    def dilation(self) -> torch.IntTensor:
         return self._native.dilation
 
     @property

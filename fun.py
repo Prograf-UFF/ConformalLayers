@@ -1,5 +1,4 @@
-from typing import Tuple, Union
-import itertools, math, numpy, torch
+import torch
 import cl.torch as cl
 
 class DenseNet(object):

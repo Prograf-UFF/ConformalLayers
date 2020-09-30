@@ -1,7 +1,6 @@
 from .module import ConformalModule
-from abc import abstractmethod
+from .utils import _size_any_t
 from typing import Optional, Tuple
-import torch
 
 
 class SRePro(ConformalModule):
@@ -12,8 +11,5 @@ class SRePro(ConformalModule):
     def __repr__(self) -> str:
        return f'SRePro({self._extra_repr(False)})'
 
-    def _output_size(self, in_channels: int, in_volume: Tuple[int, ...]) -> Tuple[int, Tuple[int, ...]]:
+    def _output_size(self, in_channels: int, in_volume: _size_any_t) -> Tuple[int, _size_any_t]:
         return in_channels, in_volume
-
-    def _register_parent(self, parent, index: int) -> None:
-        pass
