@@ -28,12 +28,6 @@ class ConformalLayers(torch.nn.Module):
         if start != len(self._modules):
             self._sequentials.append(torch.nn.Sequential(*map(lambda module: module._native, self._modules[start:])))
             self._activations.append(None) #TODO Lidar com esse caso
-        # Initialize some useful attributes
-        self._in_channels = None
-        for curr in self._modules:
-            if hasattr(curr, 'in_channels'):
-                self._in_channels = curr.in_channels
-                break
         # Initialize cached data with null values
         self._valid_cache = False
         self._cached_signature = None
@@ -80,8 +74,13 @@ class ConformalLayers(torch.nn.Module):
     def forward(self, input):
         batches, in_channels, *in_volume = input.shape
         in_volume = tuple(in_volume)
-        if not self._in_channels is None and in_channels != self._in_channels:
-            raise RuntimeError(f'Expected input to have {self._in_channels} channels, but got {in_channels} channels instead.')
+        # # Check whether expected input data is compatible to the conformal layers
+        # if not self._cached_signature is None:
+        #     (cached_in_channels, cached_in_volume), _ = self._cached_signature
+        #     if in_channels != cached_in_channels:
+        #         raise RuntimeError(f'Expected input to have {cached_in_channels} channels, but got {in_channels} channels instead.')
+        #     if in_volume != cached_in_volume:
+        #         raise RuntimeError(f'Expected input to have {cached_in_volume} entries, but got {in_volume} entries instead.')
         # If necessary, update cached data
         _, (out_channels, out_volume) = self._update_cache(in_channels, in_volume)
         # Reshape the input as a matrix where each batch entry corresponds to a column 

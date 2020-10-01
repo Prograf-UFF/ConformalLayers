@@ -10,8 +10,9 @@ class _MinkowskiModuleWrapper(object):
         self._module = module
         # Compute some constant values and keep them
         temp = self._module.kernel_size.sub(1).floor_divide(2).mul(self._module.kernel_size.remainder(2)).mul(self._module.dilation)
-        self._index_start_offset = temp.sub(self._module.padding)
-        self._index_end_offset = temp.add(self._module.padding).sub(self._module.kernel_size.sub(1).mul(self._module.dilation)).add(1)
+        padding = self._module.dilation * (self._module.kernel_size - 1) - self._module.padding if self._module.is_transpose else self._module.padding
+        self._index_start_offset = temp.sub(padding)
+        self._index_end_offset = temp.add(padding).sub(self._module.kernel_size.sub(1).mul(self._module.dilation)).add(1)
 
     def forward(self, input: me.SparseTensor) -> me.SparseTensor:
         in_coords = input.coords

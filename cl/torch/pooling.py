@@ -2,13 +2,12 @@ from .module import _MinkowskiModuleWrapper, ConformalModule
 from .utils import _int_or_size_1_t, _int_or_size_2_t, _int_or_size_3_t, _size_any_t, _pair, _single, _triple
 from typing import Optional, Tuple
 import MinkowskiEngine as me
-import torch
+import numpy, torch
 
 
 class _WrappedMinkowskiAvgPooling(me.MinkowskiAvgPooling):
     def __init__(self, padding: _size_any_t, *args, **kwargs) -> None:
         super(_WrappedMinkowskiAvgPooling, self).__init__(*args, **kwargs)
-        self._stride = torch.ones(self.dimension(), dtype=torch.int32)
         self._padding = torch.as_tensor(padding, dtype=torch.int32)
         self._wrapper = _MinkowskiModuleWrapper(self)
 
@@ -19,9 +18,9 @@ class _WrappedMinkowskiAvgPooling(me.MinkowskiAvgPooling):
         return self._wrapper.forward(input)
 
     @property
-    def stride(self) -> torch.IntTensor:
-        return self._stride
-
+    def is_transpose(self) -> bool:
+        return False
+    
     @property
     def padding(self) -> torch.IntTensor:
         return self._padding
@@ -30,14 +29,14 @@ class _WrappedMinkowskiAvgPooling(me.MinkowskiAvgPooling):
 class AvgPoolNd(ConformalModule):
     def __init__(self,
                  kernel_size: _size_any_t,
-                 stride: _size_any_t,
+                 stride: Optional[_size_any_t],
                  padding: _size_any_t,
                  dilation: _size_any_t,
                  name: Optional[str]=None) -> None:
         super(AvgPoolNd, self).__init__(name)
         self._native = _WrappedMinkowskiAvgPooling(
             kernel_size=kernel_size,
-            stride=stride,
+            stride=kernel_size if stride is None else stride,
             padding=padding,
             dilation=dilation,
             dimension=len(kernel_size))
@@ -46,7 +45,7 @@ class AvgPoolNd(ConformalModule):
        return f'AvgPool(kernel_size={*map(int, self.kernel_size),}, stride={*map(int, self.stride),}, padding={*map(int, self.padding),}, dilation={*map(int, self.dilation),}{self._extra_repr(True)})'
 
     def _output_size(self, in_channels: int, in_volume: _size_any_t) -> Tuple[int, _size_any_t]:
-        return in_channels, in_volume
+        return in_channels, tuple(map(int, numpy.floor(numpy.add(numpy.true_divide(numpy.add(in_volume, numpy.subtract(numpy.subtract(numpy.multiply(self.padding, 2), numpy.multiply(self.dilation, numpy.subtract(self.kernel_size, 1))), 1)), self.stride), 1))))
 
     @property
     def kernel_size(self) -> torch.IntTensor:
@@ -72,9 +71,9 @@ class AvgPoolNd(ConformalModule):
 class AvgPool1d(AvgPoolNd):
     def __init__(self,
                  kernel_size: _int_or_size_1_t,
-                 stride: _int_or_size_1_t,
-                 padding: _int_or_size_1_t,
-                 dilation: _int_or_size_1_t,
+                 stride: Optional[_int_or_size_1_t]=None,
+                 padding: _int_or_size_1_t=0,
+                 dilation: _int_or_size_1_t=1,
                  name: Optional[str]=None) -> None:
         super(AvgPool1d, self).__init__(
             kernel_size=_single(kernel_size),
@@ -87,9 +86,9 @@ class AvgPool1d(AvgPoolNd):
 class AvgPool2d(AvgPoolNd):
     def __init__(self,
                  kernel_size: _int_or_size_2_t,
-                 stride: _int_or_size_2_t,
-                 padding: _int_or_size_2_t,
-                 dilation: _int_or_size_2_t,
+                 stride: Optional[_int_or_size_2_t]=None,
+                 padding: _int_or_size_2_t=0,
+                 dilation: _int_or_size_2_t=1,
                  name: Optional[str]=None) -> None:
         super(AvgPool2d, self).__init__(
             kernel_size=_pair(kernel_size),
@@ -102,9 +101,9 @@ class AvgPool2d(AvgPoolNd):
 class AvgPool3d(AvgPoolNd):
     def __init__(self,
                  kernel_size: _int_or_size_3_t,
-                 stride: _int_or_size_3_t,
-                 padding: _int_or_size_3_t,
-                 dilation: _int_or_size_3_t,
+                 stride: Optional[_int_or_size_3_t]=None,
+                 padding: _int_or_size_3_t=0,
+                 dilation: _int_or_size_3_t=1,
                  name: Optional[str]=None) -> None:
         super(AvgPool3d, self).__init__(
             kernel_size=_triple(kernel_size),

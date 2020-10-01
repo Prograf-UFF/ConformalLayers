@@ -113,9 +113,9 @@ class Conv1d(ConvNd):
                  in_channels: int,
                  out_channels: int,
                  kernel_size: _int_or_size_1_t,
-                 stride: _int_or_size_1_t,
-                 padding: _int_or_size_1_t,
-                 dilation: _int_or_size_1_t,
+                 stride: _int_or_size_1_t=1,
+                 padding: _int_or_size_1_t=0,
+                 dilation: _int_or_size_1_t=1,
                  name: Optional[str]=None) -> None:
         super(Conv1d, self).__init__(
             in_channels=in_channels,
@@ -133,9 +133,9 @@ class Conv2d(ConvNd):
                  in_channels: int,
                  out_channels: int,
                  kernel_size: _int_or_size_2_t,
-                 stride: _int_or_size_2_t,
-                 padding: _int_or_size_2_t,
-                 dilation: _int_or_size_2_t,
+                 stride: _int_or_size_2_t=1,
+                 padding: _int_or_size_2_t=0,
+                 dilation: _int_or_size_2_t=1,
                  name: Optional[str]=None) -> None:
         super(Conv2d, self).__init__(
             in_channels=in_channels,
@@ -153,9 +153,9 @@ class Conv3d(ConvNd):
                  in_channels: int,
                  out_channels: int,
                  kernel_size: _int_or_size_3_t,
-                 stride: _int_or_size_3_t,
-                 padding: _int_or_size_3_t,
-                 dilation: _int_or_size_3_t,
+                 stride: _int_or_size_3_t=1,
+                 padding: _int_or_size_3_t=0,
+                 dilation: _int_or_size_3_t=1,
                  name: Optional[str]=None) -> None:
         super(Conv3d, self).__init__(
             in_channels=in_channels,
@@ -173,9 +173,9 @@ class ConvTransposeNd(ConvNd):
                  in_channels: int,
                  out_channels: int,
                  kernel_size: _size_any_t,
-                 stride: _size_any_t,
-                 padding: _size_any_t,
-                 dilation: _size_any_t,
+                 stride: _size_any_t=1,
+                 padding: _size_any_t=0,
+                 dilation: _size_any_t=1,
                  name: Optional[str]=None) -> None:
         super(ConvTransposeNd, self).__init__(
             in_channels=in_channels,
@@ -193,9 +193,9 @@ class ConvTranspose1d(ConvNd):
                  in_channels: int,
                  out_channels: int,
                  kernel_size: _int_or_size_1_t,
-                 stride: _int_or_size_1_t,
-                 padding: _int_or_size_1_t,
-                 dilation: _int_or_size_1_t,
+                 stride: _int_or_size_1_t=1,
+                 padding: _int_or_size_1_t=0,
+                 dilation: _int_or_size_1_t=1,
                  name: Optional[str]=None) -> None:
         super(ConvTranspose1d, self).__init__(
             in_channels=in_channels,
@@ -213,9 +213,9 @@ class ConvTranspose2d(ConvNd):
                  in_channels: int,
                  out_channels: int,
                  kernel_size: _int_or_size_2_t,
-                 stride: _int_or_size_2_t,
-                 padding: _int_or_size_2_t,
-                 dilation: _int_or_size_2_t,
+                 stride: _int_or_size_2_t=1,
+                 padding: _int_or_size_2_t=0,
+                 dilation: _int_or_size_2_t=1,
                  name: Optional[str]=None) -> None:
         super(ConvTranspose2d, self).__init__(
             in_channels=in_channels,
@@ -233,9 +233,9 @@ class ConvTranspose3d(ConvNd):
                  in_channels: int,
                  out_channels: int,
                  kernel_size: _int_or_size_3_t,
-                 stride: _int_or_size_3_t,
-                 padding: _int_or_size_3_t,
-                 dilation: _int_or_size_3_t,
+                 stride: _int_or_size_3_t=1,
+                 padding: _int_or_size_3_t=0,
+                 dilation: _int_or_size_3_t=1,
                  name: Optional[str]=None) -> None:
         super(ConvTranspose3d, self).__init__(
             in_channels=in_channels,
