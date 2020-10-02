@@ -5,7 +5,7 @@ except ModuleNotFoundError:
     sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
     import cl.torch as cl
 
-import torch
+import time, torch
 
 class NativeNet(object):
     def __init__(self, in_volume, *native_modules):
@@ -116,8 +116,16 @@ def unit_test(batches, in_channels, in_volume, *native_modules):
     # Create input data
     input = torch.rand(batches, in_channels, *in_volume)
     # Compute resulting data
+    start_time = time.time()
     y_native = native_net(input)
+    native_time = time.time() - start_time
+    start_time = time.time()
     y_cl = cl_net(input)
+    cl_time = time.time() - start_time
+    start_time = time.time()
+    y_cl = cl_net(input)
+    cl_cached_time = time.time() - start_time
     # Compare results
     if torch.max(torch.abs(y_native - y_cl)) > tol:
         raise RuntimeError(f'\ny_native = {y_native}\ny_cl = {y_cl}')
+    return native_time, cl_time, cl_cached_time

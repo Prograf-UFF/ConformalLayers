@@ -23,13 +23,13 @@ class _WrappedMinkowskiConvolution(me.MinkowskiConvolution):
         # Compute the complete set of coordinates for evaluating the module
         index_start = in_coords[:, 1:].min(0)[0] + self._index_start_offset
         index_end = in_coords[:, 1:].max(0)[0] + self._index_end_offset
-        def cat_batch_and_indices(batch, indices):
-            return torch.cat((torch.full((len(indices), 1), batch, dtype=torch.int32), indices), dim=1)
+        def stack_dims(batch, *indices):
+            return torch.stack((torch.full_like(indices[0], batch), *indices), dim=-1).view(-1, 1 + input.dimension)
         def batch_coords(batch, indices):
-            return cat_batch_and_indices(batch, torch.stack(torch.meshgrid(*map(lambda start, end, step: torch.arange(int(start), int(end), int(step), dtype=torch.int32),
+            return stack_dims(batch, *torch.meshgrid(*map(lambda start, end, step: torch.arange(int(start), int(end), int(step), dtype=torch.int32),
                 torch.max(index_start, ((indices.min(0)[0] + self._kernel_start_offset - index_start) // self.stride) * self.stride + index_start),
                 torch.min(index_end, ((indices.max(0)[0] + self._kernel_end_offset - index_start) // self.stride + 1) * self.stride + index_start),
-                self.stride)), dim=-1).view(-1, input.dimension))
+                self.stride)))
         coords = torch.cat([batch_coords(batch, input.coordinates_at(batch)) for batch in range(batches)], dim=0)
         #TODO assert (torch.abs(result.feats) <= 1e-6).all(), 'Os limites do arange(...) precisam ser ajustados, pois coordenadas irrelevantes são geradas em casos a serem investigados
         # Evaluate the module
