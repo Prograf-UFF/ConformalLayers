@@ -69,7 +69,7 @@ class CLNet(object):
                 self._copy_kernel(module.weight, modules[-1].kernel)
             elif isinstance(module, torch.nn.ConvTranspose1d):
                 assert module.groups == 1 and not module.bias and module.padding_mode == 'zeros'
-                modules.append(cl.Conv1d(
+                modules.append(cl.ConvTranspose1d(
                     in_channels=module.in_channels,
                     out_channels=module.out_channels,
                     kernel_size=module.kernel_size,
@@ -79,7 +79,7 @@ class CLNet(object):
                 self._copy_kernel(module.weight, modules[-1].kernel)
             elif isinstance(module, torch.nn.ConvTranspose2d):
                 assert module.groups == 1 and not module.bias and module.padding_mode == 'zeros'
-                modules.append(cl.Conv2d(
+                modules.append(cl.ConvTranspose2d(
                     in_channels=module.in_channels,
                     out_channels=module.out_channels,
                     kernel_size=module.kernel_size,
@@ -89,7 +89,7 @@ class CLNet(object):
                 self._copy_kernel(module.weight, modules[-1].kernel)
             elif isinstance(module, torch.nn.ConvTranspose3d):
                 assert module.groups == 1 and not module.bias and module.padding_mode == 'zeros'
-                modules.append(cl.Conv3d(
+                modules.append(cl.ConvTranspose3d(
                     in_channels=module.in_channels,
                     out_channels=module.out_channels,
                     kernel_size=module.kernel_size,

@@ -9,7 +9,7 @@ class SRePro(ConformalModule):
         super(SRePro, self).__init__(name)
 
     def __repr__(self) -> str:
-       return f'SRePro({self._extra_repr(False)})'
+       return f'{self.__class__.__name__}({self._extra_repr(False)})'
 
     def _output_size(self, in_channels: int, in_volume: _size_any_t) -> Tuple[int, _size_any_t]:
         return in_channels, in_volume

@@ -54,18 +54,23 @@ class ConformalLayers(torch.nn.Module):
                 out_channels, out_volume = curr._output_size(out_channels, out_volume)
             # Create a sparse tensor that decomposes the input
             in_entries = numpy.prod(in_volume)
+            in_numel = in_channels * in_entries
             def coords_generator():
                 for batch, (_, *index) in enumerate(numpy.ndindex(in_channels, *in_volume)):
                     yield batch, *index
             eye = me.SparseTensor(
                 coords=torch.from_numpy(numpy.fromiter(coords_generator(), dtype=[('', numpy.int32) for _ in range(1 + len(in_volume))]).view((numpy.int32, (1 + len(in_volume),)))),
-                feats=torch.eye(in_channels).repeat_interleave(in_entries, dim=0)  #TODO É possível reaproveitar a memória criando view equivalente a repeat_interleave()?
-            )
+                feats=torch.eye(in_channels).repeat_interleave(in_entries, dim=0))  #TODO É possível reaproveitar a memória criando view equivalente a repeat_interleave()?
             # Apply the modules to the eye tensor and make the tensor representation of the complete operation
             #TODO Implementar a operação completa
-            all_U = torch.nn.Sequential(*self._sequentials)
-            result, _, _ = all_U(eye).dense() #TODO Precisa fazer a conversão para torch.Tensor?
-            self._cached_left_tensor = result.view(in_channels * in_entries, -1).t() #TODO É possível reaproveitar a memória alocada anteriormente para o tensor?
+            union = me.MinkowskiUnion()
+            transform = torch.nn.Sequential(*self._sequentials)
+            result = transform(eye)
+            min_coords = torch.zeros((1 + len(out_volume),), dtype=torch.int32)
+            max_coords = torch.as_tensor((in_numel, *out_volume,), dtype=torch.int32) - 1
+            bounds = me.SparseTensor(coords=torch.stack((min_coords, max_coords), dim=0), feats=torch.zeros((2, out_channels), dtype=result.dtype), coords_manager=result.coords_man, force_creation=True)
+            result, _, _ = union(result, bounds).dense() #TODO We have been used union(...) as a workaround to avoid a bug in the dense(min_coords, max_coords) function.
+            self._cached_left_tensor = result.view(in_numel, -1).t() #TODO É possível reaproveitar a memória alocada anteriormente para o tensor?
             # Set cached data as valid
             self._valid_cache = True
             self._cached_signature = ((in_channels, in_volume), (out_channels, out_volume))
@@ -73,16 +78,8 @@ class ConformalLayers(torch.nn.Module):
 
     def forward(self, input):
         batches, in_channels, *in_volume = input.shape
-        in_volume = tuple(in_volume)
-        # # Check whether expected input data is compatible to the conformal layers
-        # if not self._cached_signature is None:
-        #     (cached_in_channels, cached_in_volume), _ = self._cached_signature
-        #     if in_channels != cached_in_channels:
-        #         raise RuntimeError(f'Expected input to have {cached_in_channels} channels, but got {in_channels} channels instead.')
-        #     if in_volume != cached_in_volume:
-        #         raise RuntimeError(f'Expected input to have {cached_in_volume} entries, but got {in_volume} entries instead.')
         # If necessary, update cached data
-        _, (out_channels, out_volume) = self._update_cache(in_channels, in_volume)
+        _, (out_channels, out_volume) = self._update_cache(in_channels, tuple(in_volume))
         # Reshape the input as a matrix where each batch entry corresponds to a column 
         x = input.view(batches, -1).t()
         # Apply the conformal layers

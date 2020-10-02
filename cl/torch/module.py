@@ -9,10 +9,13 @@ class _MinkowskiModuleWrapper(object):
     def __init__(self, module: me.MinkowskiModuleBase) -> None:
         self._module = module
         # Compute some constant values and keep them
-        temp = self._module.kernel_size.sub(1).floor_divide(2).mul(self._module.kernel_size.remainder(2)).mul(self._module.dilation)
-        padding = self._module.dilation * (self._module.kernel_size - 1) - self._module.padding if self._module.is_transpose else self._module.padding
-        self._index_start_offset = temp.sub(padding)
-        self._index_end_offset = temp.add(padding).sub(self._module.kernel_size.sub(1).mul(self._module.dilation)).add(1)
+        temp = self._module.dilation * ((self._module.kernel_size - 1) // 2) * (self._module.kernel_size % 2)
+        if self._module.is_transpose:
+            self._index_start_offset = temp + self._module.padding - self._module.dilation * (self._module.kernel_size - 1)
+            self._index_end_offset = temp - self._module.padding + 1
+        else:
+            self._index_start_offset = temp - self._module.padding
+            self._index_end_offset = temp + self._module.padding - self._module.dilation * (self._module.kernel_size - 1) + 1
 
     def forward(self, input: me.SparseTensor) -> me.SparseTensor:
         in_coords = input.coords
@@ -20,8 +23,8 @@ class _MinkowskiModuleWrapper(object):
         max_in_coords = in_coords.max(0, keepdim=True)[0].view(-1)
         # Compute the complete set of coordinates for evaluating the module
         indices = torch.stack(torch.meshgrid(*map(lambda start, end, step: torch.arange(int(start), int(end), int(step), dtype=torch.int32),
-            min_in_coords[1:].add(self._index_start_offset),
-            max_in_coords[1:].add(self._index_end_offset),
+            min_in_coords[1:] + self._index_start_offset,
+            max_in_coords[1:] + self._index_end_offset,
             self._module.stride
         )), dim=-1).view(-1, input.dimension)
         batches = torch.arange(min_in_coords[0], max_in_coords[0] + 1, dtype=torch.int32).view(-1, 1)
@@ -34,7 +37,7 @@ class _MinkowskiModuleWrapper(object):
         # Compress the resulting tensor coordinates
         if self._module.stride.ne(1).any():
             result = me.SparseTensor(
-                coords=result.coords.sub(torch.cat((torch.zeros((1,), dtype=torch.int32), indices[0, :]))).floor_divide(torch.cat((torch.ones((1,), dtype=torch.int32), self._module.stride))),
+                coords=(result.coords - torch.cat((torch.zeros((1,), dtype=torch.int32), indices[0, :]))) // torch.cat((torch.ones((1,), dtype=torch.int32), self._module.stride)),
                 feats=result.feats
             )
         # Return the resulting tensor
