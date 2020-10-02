@@ -31,6 +31,7 @@ class _WrappedMinkowskiConvolution(me.MinkowskiConvolution):
                 torch.min(index_end, ((indices.max(0)[0] + self._kernel_end_offset - index_start) // self.stride + 1) * self.stride + index_start),
                 self.stride)), dim=-1).view(-1, input.dimension))
         coords = torch.cat([batch_coords(batch, input.coordinates_at(batch)) for batch in range(batches)], dim=0)
+        #TODO assert (torch.abs(result.feats) <= 1e-6).all(), 'Os limites do arange(...) precisam ser ajustados, pois coordenadas irrelevantes são geradas em casos a serem investigados
         # Evaluate the module
         result = super().forward(input, coords)
         # Map the first indices to zeros and compress the resulting coordinates
@@ -46,10 +47,6 @@ class _WrappedMinkowskiConvolution(me.MinkowskiConvolution):
             new_coords = result.coords
             new_coords[:, 1:] //= self.stride
             result = me.SparseTensor(coords=new_coords, feats=result.feats)
-
-        #TODO
-        if (torch.abs(result.feats) <= 1e-6).any():
-            print('Opa!')
         # Return the resulting tensor
         return result
 
