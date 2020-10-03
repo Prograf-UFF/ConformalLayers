@@ -5,7 +5,6 @@ import numpy, torch
 DIMENSIONS = [1, 2]
 NATIVE_MODULES = [torch.nn.Conv1d, torch.nn.Conv2d]
 
-
 BATCHES_START, BATCHES_END = 1, 3 + 1
 IN_CHANNELS_START, IN_CHANNELS_END = 1, 3 + 1
 OUT_CHANNELS_START, OUT_CHANNELS_END = 1, 3 + 1

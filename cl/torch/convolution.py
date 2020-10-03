@@ -19,36 +19,28 @@ class _WrappedMinkowskiConvolution(me.MinkowskiConvolution):
 
     def forward(self, input: me.SparseTensor) -> me.SparseTensor:
         in_coords = input.coords
-        batches = int(in_coords[:, 0].max()) + 1
+        indices_per_batch = input.decomposed_coordinates
         # Compute the complete set of coordinates for evaluating the module
         index_start = in_coords[:, 1:].min(0)[0] + self._index_start_offset
         index_end = in_coords[:, 1:].max(0)[0] + self._index_end_offset
-        def stack_dims(batch, *indices):
-            return torch.stack((torch.full_like(indices[0], batch), *indices), dim=-1).view(-1, 1 + input.dimension)
-        def batch_coords(batch, indices):
-            return stack_dims(batch, *torch.meshgrid(*map(lambda start, end, step: torch.arange(int(start), int(end), int(step), dtype=torch.int32),
-                torch.max(index_start, ((indices.min(0)[0] + self._kernel_start_offset - index_start) // self.stride) * self.stride + index_start),
-                torch.min(index_end, ((indices.max(0)[0] + self._kernel_end_offset - index_start) // self.stride + 1) * self.stride + index_start),
-                self.stride)))
-        coords = torch.cat([batch_coords(batch, input.coordinates_at(batch)) for batch in range(batches)], dim=0)
-        #TODO assert (torch.abs(result.feats) <= 1e-6).all(), 'Os limites do arange(...) precisam ser ajustados, pois coordenadas irrelevantes são geradas em casos a serem investigados
+        out_coords = torch.cat(tuple(torch.stack(torch.meshgrid(torch.as_tensor((batch,), dtype=torch.int32), *map(lambda start, end, step: torch.arange(int(start), int(end), int(step), dtype=torch.int32),
+            torch.max(index_start, ((indices.min(0)[0] + self._kernel_start_offset - index_start) // self.stride) * self.stride + index_start),
+            torch.min(index_end, ((indices.max(0)[0] + self._kernel_end_offset - index_start) // self.stride + 1) * self.stride + index_start),
+            self.stride)), dim=-1).view(-1, 1 + input.dimension) for batch, indices in enumerate(indices_per_batch)), dim=0)
+        #TODO assert (torch.abs(output.feats) <= 1e-6).all(), 'Os limites do arange(...) precisam ser ajustados, pois coordenadas irrelevantes são geradas em casos a serem investigados
         # Evaluate the module
-        result = super().forward(input, coords)
+        output = super().forward(input, out_coords)
         # Map the first indices to zeros and compress the resulting coordinates
         if (index_start != 0).any():
-            new_coords = result.coords
-            new_coords[:, 1:] -= index_start
+            out_coords[:, 1:] -= index_start
             if (self.stride != 1).any():
-                new_coords[:, 1:] //= self.stride
-                result = me.SparseTensor(coords=new_coords, feats=result.feats)
-            else:
-                result = me.SparseTensor(coords=new_coords, feats=result.feats)
+                out_coords[:, 1:] //= self.stride
+            output = me.SparseTensor(coords=out_coords, feats=output.feats)
         elif (self.stride != 1).any():
-            new_coords = result.coords
-            new_coords[:, 1:] //= self.stride
-            result = me.SparseTensor(coords=new_coords, feats=result.feats)
+            out_coords[:, 1:] //= self.stride
+            output = me.SparseTensor(coords=out_coords, feats=output.feats)
         # Return the resulting tensor
-        return result
+        return output
 
     @property
     def padding(self) -> torch.IntTensor:

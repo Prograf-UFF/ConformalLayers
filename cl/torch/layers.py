@@ -9,6 +9,9 @@ import numpy, operator, torch
 _cached_signature_t = Tuple[Tuple[int, _size_any_t], Tuple[int, _size_any_t]]  # Format: ((in_channels, in_volume), (out_channels, out_volume))
 
 
+_union = me.MinkowskiUnion()
+
+
 class ConformalLayers(torch.nn.Module):
     def __init__(self, *args: ConformalModule) -> None:
         super(ConformalLayers, self).__init__()
@@ -52,25 +55,23 @@ class ConformalLayers(torch.nn.Module):
             out_channels, out_volume = in_channels, in_volume
             for curr in self._modules:
                 out_channels, out_volume = curr._output_size(out_channels, out_volume)
-            # Create a sparse tensor that decomposes the input
+            # Create a sparse tensor that decomposes any input
             in_entries = numpy.prod(in_volume)
             in_numel = in_channels * in_entries
-            def coords_generator():
-                for batch, (_, *index) in enumerate(numpy.ndindex(in_channels, *in_volume)):
-                    yield batch, *index
-            eye = me.SparseTensor(
-                coords=torch.from_numpy(numpy.fromiter(coords_generator(), dtype=[('', numpy.int32) for _ in range(1 + len(in_volume))]).view((numpy.int32, (1 + len(in_volume),)))),
-                feats=torch.eye(in_channels).repeat_interleave(in_entries, dim=0))  #TODO É possível reaproveitar a memória criando view equivalente a repeat_interleave()?
+            coords = torch.stack(torch.meshgrid(*map(lambda end: torch.arange(int(end), dtype=torch.int32), (in_channels, *in_volume))), dim=-1).view(-1, 1 + len(in_volume))
+            coords[:, 0] = torch.arange(len(coords))
+            feats = torch.zeros(in_numel, in_channels)
+            for channel in range(in_channels):
+                feats[channel*in_entries:(channel+1)*in_entries, channel] = 1
+            eye = me.SparseTensor(coords=coords, feats=feats)
             # Apply the modules to the eye tensor and make the tensor representation of the complete operation
-            #TODO Implementar a operação completa
-            union = me.MinkowskiUnion()
-            transform = torch.nn.Sequential(*self._sequentials)
-            result = transform(eye)
+            assert self.nlayers == 1 #TODO Implementar a operação completa
             min_coords = torch.zeros((1 + len(out_volume),), dtype=torch.int32)
-            max_coords = torch.as_tensor((in_numel, *out_volume,), dtype=torch.int32) - 1
+            max_coords = torch.as_tensor((in_numel, *out_volume), dtype=torch.int32) - 1
+            result = self._sequentials[-1](eye)
             bounds = me.SparseTensor(coords=torch.stack((min_coords, max_coords), dim=0), feats=torch.zeros((2, out_channels), dtype=result.dtype), coords_manager=result.coords_man, force_creation=True)
-            result, _, _ = union(result, bounds).dense() #TODO We have been used union(...) as a workaround to avoid a bug in the dense(min_coords, max_coords) function.
-            self._cached_left_tensor = result.view(in_numel, -1).t() #TODO É possível reaproveitar a memória alocada anteriormente para o tensor?
+            result, _, _ = _union(result, bounds).dense() #TODO We use _union(...) as a workaround to avoid a bug in the dense(min_coords, max_coords) function.
+            self._cached_left_tensor = result.view(in_numel, -1).t()
             # Set cached data as valid
             self._valid_cache = True
             self._cached_signature = ((in_channels, in_volume), (out_channels, out_volume))
@@ -81,11 +82,11 @@ class ConformalLayers(torch.nn.Module):
         # If necessary, update cached data
         _, (out_channels, out_volume) = self._update_cache(in_channels, tuple(in_volume))
         # Reshape the input as a matrix where each batch entry corresponds to a column 
-        x = input.view(batches, -1).t()
-        # Apply the conformal layers
-        y = self._cached_left_tensor.matmul(x) #TODO Implementar a operação completa
+        input_as_matrix = input.view(batches, -1).t()
+        # Apply the Conformal Layers
+        output_as_matrix = self._cached_left_tensor.matmul(input_as_matrix) #TODO Implementar a operação completa
         # Reshape the result to the expected format
-        return y.t().view(batches, out_channels, *out_volume)
+        return output_as_matrix.t().view(batches, out_channels, *out_volume)
 
     def invalidate_cache(self) -> None:
         self._valid_cache = False
@@ -93,7 +94,11 @@ class ConformalLayers(torch.nn.Module):
     @property
     def cached_signature(self) -> _cached_signature_t:
         return self._cached_signature
-        
+
+    @property
+    def nlayers(self) -> int:
+        return len(self._sequentials)
+
     @property
     def valid_cache(self) -> bool:
         return self._valid_cache
