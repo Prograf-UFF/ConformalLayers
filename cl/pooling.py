@@ -6,20 +6,43 @@ import torch
 
 
 class _WrappedMinkowskiAvgPooling(me.MinkowskiSumPooling):
-    def __init__(self, padding: _size_any_t, *args, **kwargs) -> None:
+    def __init__(self, stride: _size_any_t, padding: _size_any_t, *args, **kwargs) -> None:
         super(_WrappedMinkowskiAvgPooling, self).__init__(*args, **kwargs)
+        self._wrapped_stride = torch.as_tensor(stride, dtype=torch.int32)
         self._padding = torch.as_tensor(padding, dtype=torch.int32)
-        self._wrapper = _MinkowskiModuleWrapper(self)
+        # Compute some constant values and keep them
+        kernel_origin = self.dilation * ((self.kernel_size - 1) // 2) * (self.kernel_size % 2)
+        dilated_kernel_size = self.dilation * (self.kernel_size - 1) + 1
+        self._kernel_start_offset = kernel_origin - dilated_kernel_size + 1
+        self._kernel_end_offset = kernel_origin
+        self._index_start_offset = kernel_origin - self.padding
+        self._index_end_offset = kernel_origin + self.padding - dilated_kernel_size + 2
         self._inv_cardinality = 1 / int(torch.prod(self.kernel_size))
 
-    def _super_forward(self, input: me.SparseTensor, coords: torch.IntTensor) -> me.SparseTensor:
-        return super().forward(input, coords)
-
     def forward(self, input: me.SparseTensor) -> me.SparseTensor:
-        temp = self._wrapper.forward(input)
-        return me.SparseTensor(
-            coords=temp.coords,
-            feats=temp.feats * self._inv_cardinality)
+        in_coords = input.coords
+        indices_per_batch = input.decomposed_coordinates
+        # Compute the complete set of coordinates for evaluating the module
+        index_start = in_coords[:, 1:].min(0)[0] + self._index_start_offset
+        index_end = in_coords[:, 1:].max(0)[0] + self._index_end_offset
+        out_coords = torch.cat(tuple(torch.stack(torch.meshgrid(torch.as_tensor((batch,), dtype=torch.int32), *map(lambda start, end, step: torch.arange(int(start), int(end), int(step), dtype=torch.int32),
+            torch.max(index_start, ((indices.min(0)[0] + self._kernel_start_offset - index_start) // self.wrapped_stride) * self.wrapped_stride + index_start),
+            torch.min(index_end, ((indices.max(0)[0] + self._kernel_end_offset - index_start) // self.wrapped_stride + 1) * self.wrapped_stride + index_start),
+            self.wrapped_stride)), dim=-1).view(-1, 1 + input.dimension) for batch, indices in enumerate(indices_per_batch)), dim=0)
+        #TODO assert (torch.abs(output.feats) <= 1e-6).all(), 'Os limites do arange(...) precisam ser ajustados, pois coordenadas irrelevantes são geradas em casos a serem investigados
+        # Evaluate the module
+        output = super().forward(input, out_coords)
+        # Map the first indices to zeros, compress the resulting coordinates and divide the features by the kernel's cardinality
+        new_coords = output.coords
+        if (index_start != 0).any():
+            new_coords[:, 1:] -= index_start
+        if (self.wrapped_stride != 1).any():
+            new_coords[:, 1:] //= self.wrapped_stride
+        return me.SparseTensor(coords=new_coords, feats=output.feats * self._inv_cardinality)
+
+    @property
+    def wrapped_stride(self) -> torch.IntTensor:
+        return self._wrapped_stride
 
     @property
     def padding(self) -> torch.IntTensor:
@@ -27,16 +50,48 @@ class _WrappedMinkowskiAvgPooling(me.MinkowskiSumPooling):
 
 
 class _WrappedMinkowskiSumPooling(me.MinkowskiSumPooling):
-    def __init__(self, padding: _size_any_t, *args, **kwargs) -> None:
+    def __init__(self, stride: _size_any_t, padding: _size_any_t, *args, **kwargs) -> None:
         super(_WrappedMinkowskiSumPooling, self).__init__(*args, **kwargs)
+        self._wrapped_stride = torch.as_tensor(stride, dtype=torch.int32)
         self._padding = torch.as_tensor(padding, dtype=torch.int32)
-        self._wrapper = _MinkowskiModuleWrapper(self)
-
-    def _super_forward(self, input: me.SparseTensor, coords: torch.IntTensor) -> me.SparseTensor:
-        return super().forward(input, coords)
+        # Compute some constant values and keep them
+        kernel_origin = self.dilation * ((self.kernel_size - 1) // 2) * (self.kernel_size % 2)
+        dilated_kernel_size = self.dilation * (self.kernel_size - 1) + 1
+        self._kernel_start_offset = kernel_origin - dilated_kernel_size + 1
+        self._kernel_end_offset = kernel_origin
+        self._index_start_offset = kernel_origin - self.padding
+        self._index_end_offset = kernel_origin + self.padding - dilated_kernel_size + 2
 
     def forward(self, input: me.SparseTensor) -> me.SparseTensor:
-        return self._wrapper.forward(input)
+        in_coords = input.coords
+        indices_per_batch = input.decomposed_coordinates
+        # Compute the complete set of coordinates for evaluating the module
+        index_start = in_coords[:, 1:].min(0)[0] + self._index_start_offset
+        index_end = in_coords[:, 1:].max(0)[0] + self._index_end_offset
+        out_coords = torch.cat(tuple(torch.stack(torch.meshgrid(torch.as_tensor((batch,), dtype=torch.int32), *map(lambda start, end, step: torch.arange(int(start), int(end), int(step), dtype=torch.int32),
+            torch.max(index_start, ((indices.min(0)[0] + self._kernel_start_offset - index_start) // self.wrapped_stride) * self.wrapped_stride + index_start),
+            torch.min(index_end, ((indices.max(0)[0] + self._kernel_end_offset - index_start) // self.wrapped_stride + 1) * self.wrapped_stride + index_start),
+            self.wrapped_stride)), dim=-1).view(-1, 1 + input.dimension) for batch, indices in enumerate(indices_per_batch)), dim=0)
+        #TODO assert (torch.abs(output.feats) <= 1e-6).all(), 'Os limites do arange(...) precisam ser ajustados, pois coordenadas irrelevantes são geradas em casos a serem investigados
+        # Evaluate the module
+        output = super().forward(input, out_coords)
+        # Map the first indices to zeros and compress the resulting coordinates
+        if (index_start != 0).any():
+            new_coords = output.coords
+            new_coords[:, 1:] -= index_start
+            if (self.wrapped_stride != 1).any():
+                new_coords[:, 1:] //= self.wrapped_stride
+            output = me.SparseTensor(coords=new_coords, feats=output.feats)
+        elif (self.wrapped_stride != 1).any():
+            new_coords = output.coords
+            new_coords[:, 1:] //= self.wrapped_stride
+            output = me.SparseTensor(coords=new_coords, feats=output.feats)
+        # Return the resulting tensor
+        return output
+
+    @property
+    def wrapped_stride(self) -> torch.IntTensor:
+        return self._wrapped_stride
 
     @property
     def padding(self) -> torch.IntTensor:
@@ -68,7 +123,7 @@ class AvgPoolNd(ConformalModule):
 
     @property
     def stride(self) -> torch.IntTensor:
-        return self._native.stride
+        return self._native.wrapped_stride
 
     @property
     def padding(self) -> torch.IntTensor:
@@ -143,7 +198,7 @@ class SumPoolNd(ConformalModule):
 
     @property
     def stride(self) -> torch.IntTensor:
-        return self._native.stride
+        return self._native.wrapped_stride
 
     @property
     def padding(self) -> torch.IntTensor:

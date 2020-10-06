@@ -32,13 +32,15 @@ class _WrappedMinkowskiConvolution(me.MinkowskiConvolution):
         output = super().forward(input, out_coords)
         # Map the first indices to zeros and compress the resulting coordinates
         if (index_start != 0).any():
-            out_coords[:, 1:] -= index_start
+            new_coords = output.coords
+            new_coords[:, 1:] -= index_start
             if (self.stride != 1).any():
-                out_coords[:, 1:] //= self.stride
-            output = me.SparseTensor(coords=out_coords, feats=output.feats)
+                new_coords[:, 1:] //= self.stride
+            output = me.SparseTensor(coords=new_coords, feats=output.feats)
         elif (self.stride != 1).any():
-            out_coords[:, 1:] //= self.stride
-            output = me.SparseTensor(coords=out_coords, feats=output.feats)
+            new_coords = output.coords
+            new_coords[:, 1:] //= self.stride
+            output = me.SparseTensor(coords=new_coords, feats=output.feats)
         # Return the resulting tensor
         return output
 

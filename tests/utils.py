@@ -1,9 +1,9 @@
 try:
-    import cl.torch as cl
+    import cl
 except ModuleNotFoundError:
     import os, sys
     sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-    import cl.torch as cl
+    import cl
 
 import time, torch
 

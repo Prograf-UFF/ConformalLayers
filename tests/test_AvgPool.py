@@ -13,6 +13,9 @@ STRIDE_START, STRIDE_END = 1, 4 + 1
 
 def main():
     print('--- START AvgPool')
+    sum_native_time = 0
+    sum_cl_time = 0
+    sum_cl_cached_time = 0
     case = 1
     for dimension, NativeModule in zip(DIMENSIONS, NATIVE_MODULES):
         for batches in range(BATCHES_START, BATCHES_END):
@@ -25,8 +28,12 @@ def main():
                             stride = numpy.add(stride, STRIDE_START)
                             for padding in numpy.ndindex(*(kernel_size // 2 + 1)):
                                 print(f'CASE #{case}: batches={batches}, in_channels={in_channels}, in_volume={*in_volume,}, kernel_size={*kernel_size,}, stride={*stride,}, padding={*padding,}')
-                                unit_test(batches, in_channels, in_volume, NativeModule(kernel_size=tuple(kernel_size), stride=tuple(stride), padding=tuple(padding), ceil_mode=False, count_include_pad=True))
+                                native_time, cl_time, cl_cached_time = unit_test(batches, in_channels, in_volume, NativeModule(kernel_size=tuple(kernel_size), stride=tuple(stride), padding=tuple(padding), ceil_mode=False, count_include_pad=True))
+                                sum_native_time += native_time
+                                sum_cl_time += cl_time
+                                sum_cl_cached_time += cl_cached_time
                                 case += 1
+    print(f'--- Native: {sum_native_time / (case - 1)} sec; CL: {sum_cl_time / (case - 1)} sec; Cached CL: {sum_cl_cached_time / (case - 1)} sec')
     print('--- END AvgPool')
 
 
