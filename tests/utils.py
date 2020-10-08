@@ -5,10 +5,11 @@ except ModuleNotFoundError:
     sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
     import cl
 
+from typing import Tuple
 import time, torch
 
 class NativeNet(object):
-    def __init__(self, in_volume, *native_modules):
+    def __init__(self, *native_modules: torch.nn.Module):
         self.modules = torch.nn.Sequential(*native_modules)
 
     def __call__(self, input):
@@ -16,7 +17,7 @@ class NativeNet(object):
 
 
 class CLNet(object):
-    def __init__(self, in_volume, *native_modules):
+    def __init__(self, *native_modules: torch.nn.Module):
         modules = list()
         for module in native_modules:
             if isinstance(module, torch.nn.AvgPool1d):
@@ -46,7 +47,7 @@ class CLNet(object):
                     stride=module.stride,
                     padding=module.padding,
                     dilation=module.dilation))
-                self._copy_kernel(module.weight, modules[-1].kernel)
+                self._copy_kernel(module.weight, modules[-1].kernel, False)
             elif isinstance(module, torch.nn.Conv2d):
                 assert module.groups == 1 and not module.bias and module.padding_mode == 'zeros'
                 modules.append(cl.Conv2d(
@@ -56,7 +57,7 @@ class CLNet(object):
                     stride=module.stride,
                     padding=module.padding,
                     dilation=module.dilation))
-                self._copy_kernel(module.weight, modules[-1].kernel)
+                self._copy_kernel(module.weight, modules[-1].kernel, False)
             elif isinstance(module, torch.nn.Conv3d):
                 assert module.groups == 1 and not module.bias and module.padding_mode == 'zeros'
                 modules.append(cl.Conv3d(
@@ -66,7 +67,7 @@ class CLNet(object):
                     stride=module.stride,
                     padding=module.padding,
                     dilation=module.dilation))
-                self._copy_kernel(module.weight, modules[-1].kernel)
+                self._copy_kernel(module.weight, modules[-1].kernel, False)
             elif isinstance(module, torch.nn.ConvTranspose1d):
                 assert module.groups == 1 and not module.bias and module.padding_mode == 'zeros'
                 modules.append(cl.ConvTranspose1d(
@@ -76,7 +77,7 @@ class CLNet(object):
                     stride=module.stride,
                     padding=module.padding,
                     dilation=module.dilation))
-                self._copy_kernel(module.weight, modules[-1].kernel)
+                self._copy_kernel(module.weight, modules[-1].kernel, True)
             elif isinstance(module, torch.nn.ConvTranspose2d):
                 assert module.groups == 1 and not module.bias and module.padding_mode == 'zeros'
                 modules.append(cl.ConvTranspose2d(
@@ -86,7 +87,7 @@ class CLNet(object):
                     stride=module.stride,
                     padding=module.padding,
                     dilation=module.dilation))
-                self._copy_kernel(module.weight, modules[-1].kernel)
+                self._copy_kernel(module.weight, modules[-1].kernel, True)
             elif isinstance(module, torch.nn.ConvTranspose3d):
                 assert module.groups == 1 and not module.bias and module.padding_mode == 'zeros'
                 modules.append(cl.ConvTranspose3d(
@@ -96,23 +97,26 @@ class CLNet(object):
                     stride=module.stride,
                     padding=module.padding,
                     dilation=module.dilation))
-                self._copy_kernel(module.weight, modules[-1].kernel)
+                self._copy_kernel(module.weight, modules[-1].kernel, True)
             else:
                 raise NotImplementedError()
         self.modules = cl.ConformalLayers(*modules)
 
-    def __call__(self, input):
+    def __call__(self, input: torch.Tensor):
         return self.modules(input)
 
-    def _copy_kernel(self, src, dst):
-        dst.data.copy_(src.data.T.reshape(*dst.data.shape))
+    def _copy_kernel(self, src: torch.nn.Parameter, dst: torch.nn.Parameter, transposed: bool):
+        if transposed:
+            dst.data.copy_(src.data.permute(1, 0, *range(2, src.data.dim())).T.reshape(*dst.data.shape))
+        else:
+            dst.data.copy_(src.data.T.reshape(*dst.data.shape))
 
 
-def unit_test(batches, in_channels, in_volume, *native_modules):
+def unit_test(batches: int, in_channels: int, in_volume: Tuple[int, ...], *native_modules: torch.nn.Module):
     tol = 1e-6
     # Bind native net and conformal layer-based net
-    native_net = NativeNet(in_volume, *native_modules)
-    cl_net = CLNet(in_volume, *native_modules)
+    native_net = NativeNet(*native_modules)
+    cl_net = CLNet(*native_modules)
     # Create input data
     input = torch.rand(batches, in_channels, *in_volume)
     # Compute resulting data

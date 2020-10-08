@@ -55,6 +55,8 @@ class ConformalLayers(torch.nn.Module):
             out_channels, out_volume = in_channels, in_volume
             for curr in self._modules:
                 out_channels, out_volume = curr._output_size(out_channels, out_volume)
+            out_entries = numpy.prod(out_volume)
+            out_numel = out_channels * out_entries
             # Create a sparse tensor that decomposes any input
             in_entries = numpy.prod(in_volume)
             in_numel = in_channels * in_entries
@@ -63,21 +65,23 @@ class ConformalLayers(torch.nn.Module):
             feats = torch.zeros(in_numel, in_channels)
             for channel in range(in_channels):
                 feats[channel*in_entries:(channel+1)*in_entries, channel] = 1
-            eye = me.SparseTensor(coords=coords, feats=feats)
+            eye = me.SparseTensor(coords=coords, feats=feats) #TODO Criar uma factory para esse tipo de tensor
             # Apply the modules to the eye tensor and make the tensor representation of the complete operation
             assert self.nlayers == 1 #TODO Implementar a operação completa
-            min_coords = torch.zeros((1 + len(out_volume),), dtype=torch.int32)
-            max_coords = torch.as_tensor((in_numel, *out_volume), dtype=torch.int32) - 1
-            result = self._sequentials[-1](eye)
-            bounds = me.SparseTensor(coords=torch.stack((min_coords, max_coords), dim=0), feats=torch.zeros((2, out_channels), dtype=result.dtype), coords_manager=result.coords_man, force_creation=True)
-            result, _, _ = _union(result, bounds).dense() #TODO We use _union(...) as a workaround to avoid a bug in the dense(min_coords, max_coords) function.
-            self._cached_left_tensor = result.view(in_numel, -1).t()
+            result = self._sequentials[-1](eye) #TODO Encapsular esse processo em uma função
+            res_coords = result.coords.view(-1, 1 + len(out_volume), 1).expand(-1, -1, out_channels).permute(0, 2, 1)
+            res_coords = torch.cat((res_coords, torch.empty((len(res_coords), out_channels, 1), dtype=torch.int32)), 2)
+            for channel in range(out_channels):
+                res_coords[:, channel, -1] = channel
+            res_coords = res_coords.view(-1, len(out_volume) + 2)
+            matrix_coords = numpy.unravel_index(numpy.ravel_multi_index(tuple(res_coords[:, dim] for dim in (0, -1, *range(1, res_coords.shape[1] - 1))), (in_numel, out_channels, *out_volume)), shape=(in_numel, out_numel))
+            self._cached_left_tensor = torch.sparse_coo_tensor((matrix_coords[1], matrix_coords[0]), result.feats.view(-1), size=(out_numel, in_numel), dtype=feats.dtype)
             # Set cached data as valid
             self._valid_cache = True
             self._cached_signature = ((in_channels, in_volume), (out_channels, out_volume))
         return self._cached_signature
 
-    def forward(self, input):
+    def forward(self, input: torch.Tensor):
         batches, in_channels, *in_volume = input.shape
         # If necessary, update cached data
         _, (out_channels, out_volume) = self._update_cache(in_channels, tuple(in_volume))

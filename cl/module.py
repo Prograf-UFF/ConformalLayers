@@ -5,43 +5,84 @@ import MinkowskiEngine as me
 import torch
 
 
-class _MinkowskiModuleWrapper(object):
-    def __init__(self, module: me.MinkowskiModuleBase) -> None:
-        self._module = module
+class _MinkowskiOperationWrapper(torch.nn.Module):
+    def __init__(self,
+                 kernel_size: _size_any_t,
+                 stride: _size_any_t,
+                 padding: _size_any_t,
+                 dilation: _size_any_t,
+                 transposed: bool) -> None:
+        super(_MinkowskiOperationWrapper, self).__init__()
+        # Declare basic properties
+        self._kernel_size = torch.as_tensor(kernel_size, dtype=torch.int32)
+        self._stride = torch.as_tensor(stride, dtype=torch.int32)
+        self._padding = torch.as_tensor(padding, dtype=torch.int32)
+        self._dilation = torch.as_tensor(dilation, dtype=torch.int32)
+        self._transposed = transposed
+        self._kernel_generator = me.KernelGenerator(kernel_size=kernel_size, stride=1, dilation=dilation, dimension=len(kernel_size))
         # Compute some constant values and keep them
-        temp = self._module.dilation * ((self._module.kernel_size - 1) // 2) * (self._module.kernel_size % 2)
-        if self._module.is_transpose:
-            self._index_start_offset = temp + self._module.padding - self._module.dilation * (self._module.kernel_size - 1)
-            self._index_end_offset = temp - self._module.padding + 1
-        else:
-            self._index_start_offset = temp - self._module.padding
-            self._index_end_offset = temp + self._module.padding - self._module.dilation * (self._module.kernel_size - 1) + 1
+        kernel_origin = self.dilation * ((self.kernel_size - 1) // 2) * (self.kernel_size % 2)
+        dilated_kernel_size = self.dilation * (self.kernel_size - 1) + 1
+        self._kernel_start_offset = kernel_origin - dilated_kernel_size + 1
+        self._kernel_end_offset = kernel_origin
+        self._index_start_offset = kernel_origin - self.padding
+        self._index_end_offset = kernel_origin + self.padding - dilated_kernel_size + 2
+
+    @abstractmethod
+    def _apply_function(self, input: me.SparseTensor, region_type: me.RegionType, region_offset: torch.IntTensor, out_coords_key: me.CoordsKey) -> torch.Tensor:
+        pass
 
     def forward(self, input: me.SparseTensor) -> me.SparseTensor:
         in_coords = input.coords
-        min_in_coords = in_coords.min(0, keepdim=True)[0].view(-1)
-        max_in_coords = in_coords.max(0, keepdim=True)[0].view(-1)
+        indices_per_batch = input.decomposed_coordinates
         # Compute the complete set of coordinates for evaluating the module
-        indices = torch.stack(torch.meshgrid(*map(lambda start, end, step: torch.arange(int(start), int(end), int(step), dtype=torch.int32),
-            min_in_coords[1:] + self._index_start_offset,
-            max_in_coords[1:] + self._index_end_offset,
-            self._module.stride
-        )), dim=-1).view(-1, input.dimension)
-        batches = torch.arange(min_in_coords[0], max_in_coords[0] + 1, dtype=torch.int32).view(-1, 1)
-        # Evaluate the module considering only a subset of the complete set of coordinates per batch
-        coords = torch.cat((
-            batches.repeat_interleave(len(indices), dim=0),
-            indices.repeat(max_in_coords[0] - min_in_coords[0] + 1, 1)  #TODO Nem todo indice precisa estar em todo batch
-        ), dim=1)
-        result = self._module._super_forward(input, coords)
-        # Compress the resulting tensor coordinates
-        if self._module.stride.ne(1).any():
-            result = me.SparseTensor(
-                coords=(result.coords - torch.cat((torch.zeros((1,), dtype=torch.int32), indices[0, :]))) // torch.cat((torch.ones((1,), dtype=torch.int32), self._module.stride)),
-                feats=result.feats
-            )
-        # Return the resulting tensor
-        return result
+        index_start = self._index_start_offset
+        index_end = in_coords[:, 1:].max(0)[0] + self._index_end_offset #TODO Esse max pode ser reaproveitado dos max por batch?
+        out_coords = torch.cat(tuple(torch.stack(torch.meshgrid(torch.as_tensor((batch,), dtype=torch.int32), *map(lambda start, end, step: torch.arange(int(start), int(end), int(step), dtype=torch.int32),
+            torch.max(index_start, ((indices.min(0)[0] + self._kernel_start_offset - index_start) // self.stride) * self.stride + index_start),
+            torch.min(index_end, ((indices.max(0)[0] + self._kernel_end_offset - index_start) // self.stride + 1) * self.stride + index_start),
+            self.stride)), dim=-1).view(-1, 1 + input.dimension) for batch, indices in enumerate(indices_per_batch)), dim=0)
+        #TODO assert (torch.abs(output.feats) <= 1e-6).all(), 'Os limites do arange(...) precisam ser ajustados, pois coordenadas irrelevantes são geradas em casos a serem investigados
+        # Create a region_type, region_offset, and coords_key
+        region_type, region_offset, _ = self._kernel_generator.get_kernel(input.tensor_stride, self.transposed)
+        out_coords_key = input.coords_man.create_coords_key(out_coords, tensor_stride=1, force_creation=True, force_remap=True, allow_duplicate_coords=True)
+        # Evaluate the module
+        out_feats = self._apply_function(input, region_type, region_offset, out_coords_key)
+        # Map the first indices to zeros and compress the resulting coordinates when needed
+        if (index_start != 0).any():
+            out_coords[:, 1:] -= index_start
+            if (self.stride != 1).any():
+                out_coords[:, 1:] //= self.stride
+            return me.SparseTensor(coords=out_coords, feats=out_feats, coords_manager=input.coords_man, force_creation=True)
+        elif (self.stride != 1).any():
+            out_coords[:, 1:] //= self.stride
+            return me.SparseTensor(coords=out_coords, feats=out_feats, coords_manager=input.coords_man, force_creation=True)
+        else:
+            return me.SparseTensor(coords_key=out_coords_key, feats=out_feats, coords_manager=input.coords_man)
+
+    @property
+    def kernel_size(self) -> torch.IntTensor:
+        return self._kernel_size
+
+    @property
+    def stride(self) -> torch.IntTensor:
+        return self._stride
+
+    @property
+    def padding(self) -> torch.IntTensor:
+        return self._padding
+
+    @property
+    def dilation(self) -> torch.IntTensor:
+        return self._dilation
+
+    @property
+    def transposed(self) -> bool:
+        return self._transposed
+
+    @property
+    def kernel_generator(self) -> me.KernelGenerator:
+        return self._kernel_generator
 
 
 class ConformalModule(ABC):
