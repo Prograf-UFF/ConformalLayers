@@ -1,15 +1,44 @@
 from .activation import SRePro
+from .decorators import sync, singleton
 from .module import ConformalModule
 from .utils import _size_any_t
 from typing import Iterator, Tuple
 import MinkowskiEngine as me
-import numpy, operator, torch
+import numpy, operator, threading, torch
 
 
 _cached_signature_t = Tuple[Tuple[int, _size_any_t], Tuple[int, _size_any_t]]  # Format: ((in_channels, in_volume), (out_channels, out_volume))
 
 
-_union = me.MinkowskiUnion()
+@singleton
+class _EyeFactory(object):
+    _Lock = threading.Lock()
+
+    def __init__(self):
+        self._cache = dict()
+
+    @sync(_Lock)
+    def clear_cache(self):
+        self._cache.clear()
+
+    @sync(_Lock)
+    def make_eye(self, in_channels: int, in_volume: _size_any_t) -> me.SparseTensor:
+        key = (in_channels, in_volume)
+        eye = self._cache.get(key)
+        if eye is None:
+            in_entries = numpy.prod(in_volume)
+            in_numel = in_channels * in_entries
+            coords = torch.stack(torch.meshgrid(*map(lambda end: torch.arange(int(end), dtype=torch.int32), (in_channels, *in_volume))), dim=-1).view(-1, 1 + len(in_volume))
+            coords[:, 0] = torch.arange(len(coords))
+            feats = torch.zeros(in_numel, in_channels)
+            for channel in range(in_channels):
+                feats[channel*in_entries:(channel+1)*in_entries, channel] = 1
+            eye = me.SparseTensor(coords=coords, feats=feats)
+            self._cache[key] = eye
+        return eye
+
+
+EYE_FACTORY = _EyeFactory()
 
 
 class ConformalLayers(torch.nn.Module):
@@ -51,21 +80,14 @@ class ConformalLayers(torch.nn.Module):
 
     def _update_cache(self, in_channels: int, in_volume: _size_any_t) -> _cached_signature_t:
         if not self._valid_cache or self._cached_signature[0] != (in_channels, in_volume):
+            in_numel = in_channels * numpy.prod(in_volume)
             # Compute the number of channels and volume of the resulting batch entries
             out_channels, out_volume = in_channels, in_volume
             for curr in self._modules:
                 out_channels, out_volume = curr._output_size(out_channels, out_volume)
-            out_entries = numpy.prod(out_volume)
-            out_numel = out_channels * out_entries
+            out_numel = out_channels * numpy.prod(out_volume)
             # Create a sparse tensor that decomposes any input
-            in_entries = numpy.prod(in_volume)
-            in_numel = in_channels * in_entries
-            coords = torch.stack(torch.meshgrid(*map(lambda end: torch.arange(int(end), dtype=torch.int32), (in_channels, *in_volume))), dim=-1).view(-1, 1 + len(in_volume))
-            coords[:, 0] = torch.arange(len(coords))
-            feats = torch.zeros(in_numel, in_channels)
-            for channel in range(in_channels):
-                feats[channel*in_entries:(channel+1)*in_entries, channel] = 1
-            eye = me.SparseTensor(coords=coords, feats=feats) #TODO Criar uma factory para esse tipo de tensor
+            eye = EYE_FACTORY.make_eye(in_channels, in_volume)
             # Apply the modules to the eye tensor and make the tensor representation of the complete operation
             assert self.nlayers == 1 #TODO Implementar a operação completa
             result = self._sequentials[-1](eye) #TODO Encapsular esse processo em uma função
@@ -74,8 +96,9 @@ class ConformalLayers(torch.nn.Module):
             for channel in range(out_channels):
                 res_coords[:, channel, -1] = channel
             res_coords = res_coords.view(-1, len(out_volume) + 2)
+            res_feats = result.feats.view(-1)
             matrix_coords = numpy.unravel_index(numpy.ravel_multi_index(tuple(res_coords[:, dim] for dim in (0, -1, *range(1, res_coords.shape[1] - 1))), (in_numel, out_channels, *out_volume)), shape=(in_numel, out_numel))
-            self._cached_left_tensor = torch.sparse_coo_tensor((matrix_coords[1], matrix_coords[0]), result.feats.view(-1), size=(out_numel, in_numel), dtype=feats.dtype)
+            self._cached_left_tensor = torch.sparse_coo_tensor((matrix_coords[1], matrix_coords[0]), res_feats, size=(out_numel, in_numel), dtype=res_feats.dtype)
             # Set cached data as valid
             self._valid_cache = True
             self._cached_signature = ((in_channels, in_volume), (out_channels, out_volume))

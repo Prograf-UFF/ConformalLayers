@@ -34,7 +34,7 @@ class _WrappedMinkowskiConvolutionTranspose(_MinkowskiOperationWrapper):
         super(_WrappedMinkowskiConvolutionTranspose, self).__init__(transposed=True, **kwargs)
         self._in_channels = in_channels
         self._out_channels = out_channels
-        self._output_padding = torch.as_tensor(output_padding, dtype=torch.int32)  #TODO Como lidar co output_padding durante a avaliação do módulo?
+        self._output_padding = torch.as_tensor(output_padding, dtype=torch.int32)  #TODO Como lidar com output_padding durante a avaliação do módulo?
         self._kernel = torch.nn.Parameter(torch.FloatTensor(self.kernel_generator.kernel_volume, in_channels, out_channels))
         self._function = me.MinkowskiConvolutionTransposeFunction()
 
