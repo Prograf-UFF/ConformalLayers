@@ -16,6 +16,9 @@ class _WrappedMinkowskiConvolution(_MinkowskiOperationWrapper):
     def _apply_function(self, input: me.SparseTensor, region_type: me.RegionType, region_offset: torch.IntTensor, out_coords_key: me.CoordsKey) -> torch.Tensor:
         return self._function.apply(input.feats, self.kernel, input.tensor_stride, 1, self.kernel_size, self.dilation, region_type, region_offset, input.coords_key, out_coords_key, input.coords_man)
 
+    def output_size(self, in_channels: int, in_volume: _size_any_t) -> Tuple[int, _size_any_t]:
+        return self.out_channels, tuple(map(int, (torch.as_tensor(in_volume, dtype=torch.int32) + 2 * self.padding - self.dilation * (self.kernel_size - 1) - 1) // self.stride + 1))
+
     @property
     def in_channels(self) -> int:
         return self._in_channels
@@ -34,12 +37,16 @@ class _WrappedMinkowskiConvolutionTranspose(_MinkowskiOperationWrapper):
         super(_WrappedMinkowskiConvolutionTranspose, self).__init__(transposed=True, **kwargs)
         self._in_channels = in_channels
         self._out_channels = out_channels
-        self._output_padding = torch.as_tensor(output_padding, dtype=torch.int32)  #TODO Como lidar com output_padding durante a avaliação do módulo?
+        self._output_padding = torch.as_tensor(output_padding, dtype=torch.int32)
         self._kernel = torch.nn.Parameter(torch.FloatTensor(self.kernel_generator.kernel_volume, in_channels, out_channels))
         self._function = me.MinkowskiConvolutionTransposeFunction()
+        raise NotImplementedError() #TODO Como lidar com output_padding durante a avaliação do módulo?
 
     def _apply_function(self, input: me.SparseTensor, region_type: me.RegionType, region_offset: torch.IntTensor, out_coords_key: me.CoordsKey) -> torch.Tensor:
         return self._function.apply(input.feats, self.kernel, input.tensor_stride, 1, self.kernel_size, self.dilation, region_type, region_offset, False, input.coords_key, out_coords_key, input.coords_man)
+
+    def output_size(self, in_channels: int, in_volume: _size_any_t) -> Tuple[int, _size_any_t]:
+        return self.out_channels, tuple((torch.as_tensor(in_volume, dtype=torch.int32) - 1) * self.stride - 2 * self.padding + self.output_padding + self.dilation * (self.kernel_size - 1) + 1)
 
     @property
     def in_channels(self) -> int:
@@ -79,12 +86,12 @@ class ConvNd(ConformalModule):
     def __repr__(self) -> str:
        return f'{self.__class__.__name__}(in_channels={self.in_channels}, out_channels={self.out_channels}, kernel_size={*map(int, self.kernel_size),}, stride={*map(int, self.stride),}, padding={*map(int, self.padding),}, dilation={*map(int, self.dilation),}{self._extra_repr(True)})'
 
-    def _output_size(self, in_channels: int, in_volume: _size_any_t) -> Tuple[int, _size_any_t]:
-        return self.out_channels, tuple(map(int, (torch.as_tensor(in_volume) + 2 * self.padding - self.dilation * (self.kernel_size - 1) - 1) // self.stride + 1))
-
     def _register_parent(self, parent, index: int) -> None:
         parent.register_parameter(f'{self.__class__.__name__}[{index}]' if self._name is None else self._name, self._native.kernel)
         self._native.kernel.register_hook(lambda _: parent.invalidate_cache())
+
+    def output_size(self, in_channels: int, in_volume: _size_any_t) -> Tuple[int, _size_any_t]:
+        return self._native.output_size(in_channels, in_volume)
 
     @property
     def in_channels(self) -> int:
@@ -195,12 +202,12 @@ class ConvTransposeNd(ConformalModule):
     def __repr__(self) -> str:
        return f'{self.__class__.__name__}(in_channels={self.in_channels}, out_channels={self.out_channels}, kernel_size={*map(int, self.kernel_size),}, stride={*map(int, self.stride),}, padding={*map(int, self.padding),}, output_padding={*map(int, self.output_padding),}, dilation={*map(int, self.dilation),}{self._extra_repr(True)})'
 
-    def _output_size(self, in_channels: int, in_volume: _size_any_t) -> Tuple[int, _size_any_t]:
-        return self.out_channels, tuple((torch.as_tensor(in_volume) - 1) * self.stride - 2 * self.padding + self.output_padding + self.dilation * (self.kernel_size - 1) + 1)
-
     def _register_parent(self, parent, index: int) -> None:
         parent.register_parameter(f'{self.__class__.__name__}[{index}]' if self._name is None else self._name, self._native.kernel)
         self._native.kernel.register_hook(lambda _: parent.invalidate_cache())
+
+    def output_size(self, in_channels: int, in_volume: _size_any_t) -> Tuple[int, _size_any_t]:
+        return self._native.output_size(in_channels, in_volume)
 
     @property
     def in_channels(self) -> int:

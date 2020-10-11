@@ -16,6 +16,9 @@ class _WrappedMinkowskiAvgPooling(_MinkowskiOperationWrapper):
         out_feats *= self._inv_cardinality
         return out_feats
 
+    def output_size(self, in_channels: int, in_volume: _size_any_t) -> Tuple[int, _size_any_t]:
+        return in_channels, tuple(map(int, (torch.as_tensor(in_volume, dtype=torch.int32) + 2 * self.padding - self.dilation * (self.kernel_size - 1) - 1) // self.stride + 1))
+
 
 class _WrappedMinkowskiSumPooling(_MinkowskiOperationWrapper):
     def __init__(self, **kwargs) -> None:
@@ -24,6 +27,9 @@ class _WrappedMinkowskiSumPooling(_MinkowskiOperationWrapper):
 
     def _apply_function(self, input: me.SparseTensor, region_type: me.RegionType, region_offset: torch.IntTensor, out_coords_key: me.CoordsKey) -> torch.Tensor:
         return self._function.apply(input.feats, input.tensor_stride, 1, self.kernel_size, self.dilation, region_type, region_offset, False, input.coords_key, out_coords_key, input.coords_man)
+
+    def output_size(self, in_channels: int, in_volume: _size_any_t) -> Tuple[int, _size_any_t]:
+        return in_channels, tuple(map(int, (torch.as_tensor(in_volume, dtype=torch.int32) + 2 * self.padding - self.dilation * (self.kernel_size - 1) - 1) // self.stride + 1))
 
 
 class AvgPoolNd(ConformalModule):
@@ -43,8 +49,8 @@ class AvgPoolNd(ConformalModule):
     def __repr__(self) -> str:
        return f'{self.__class__.__name__}(kernel_size={*map(int, self.kernel_size),}, stride={*map(int, self.stride),}, padding={*map(int, self.padding),}, dilation={*map(int, self.dilation),}{self._extra_repr(True)})'
 
-    def _output_size(self, in_channels: int, in_volume: _size_any_t) -> Tuple[int, _size_any_t]:
-        return in_channels, tuple(map(int, (torch.as_tensor(in_volume) + 2 * self.padding - self.dilation * (self.kernel_size - 1) - 1) // self.stride + 1))
+    def output_size(self, in_channels: int, in_volume: _size_any_t) -> Tuple[int, _size_any_t]:
+        return self._native.output_size(in_channels, in_volume)
 
     @property
     def kernel_size(self) -> torch.IntTensor:
@@ -125,8 +131,8 @@ class SumPoolNd(ConformalModule):
     def __repr__(self) -> str:
        return f'{self.__class__.__name__}(kernel_size={*map(int, self.kernel_size),}, stride={*map(int, self.stride),}, padding={*map(int, self.padding),}, dilation={*map(int, self.dilation),}{self._extra_repr(True)})'
 
-    def _output_size(self, in_channels: int, in_volume: _size_any_t) -> Tuple[int, _size_any_t]:
-        return in_channels, tuple(map(int, (torch.as_tensor(in_volume) + 2 * self.padding - self.dilation * (self.kernel_size - 1) - 1) // self.stride + 1))
+    def output_size(self, in_channels: int, in_volume: _size_any_t) -> Tuple[int, _size_any_t]:
+        return self._native.output_size(in_channels, in_volume)
 
     @property
     def kernel_size(self) -> torch.IntTensor:

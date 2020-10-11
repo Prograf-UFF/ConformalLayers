@@ -60,6 +60,10 @@ class _MinkowskiOperationWrapper(torch.nn.Module):
         else:
             return me.SparseTensor(coords_key=out_coords_key, feats=out_feats, coords_manager=input.coords_man)
 
+    @abstractmethod
+    def output_size(self, in_channels: int, in_volume: _size_any_t) -> Tuple[int, _size_any_t]:
+        pass
+
     @property
     def kernel_size(self) -> torch.IntTensor:
         return self._kernel_size
@@ -93,13 +97,13 @@ class ConformalModule(ABC):
     def _extra_repr(self, comma: bool) -> str:
         return '' if self._name is None else f'{", " if comma else ""}name={self._name}'
 
-    @abstractmethod
-    def _output_size(self, in_channels: int, in_volume: _size_any_t) -> Tuple[int, _size_any_t]:
-        pass
-    
     def _register_parent(self, parent, index: int) -> None:
         pass
 
+    @abstractmethod
+    def output_size(self, in_channels: int, in_volume: _size_any_t) -> Tuple[int, _size_any_t]:
+        pass
+    
     @property
     def name(self) -> Optional[str]:
         return self._name

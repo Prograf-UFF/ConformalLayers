@@ -114,7 +114,7 @@ class CLNet(object):
 
 def unit_test(batches: int, in_channels: int, in_volume: Tuple[int, ...], *native_modules: torch.nn.Module):
     tol = 1e-6
-    # Bind native net and conformal layer-based net
+    # Bind native net and Conformal Layer-based net
     native_net = NativeNet(*native_modules)
     cl_net = CLNet(*native_modules)
     # Create input data
