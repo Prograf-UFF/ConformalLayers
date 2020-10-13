@@ -120,16 +120,17 @@ def unit_test(batches: int, in_channels: int, in_volume: Tuple[int, ...], *nativ
     # Create input data
     input = torch.rand(batches, in_channels, *in_volume)
     # Compute resulting data
+    unit_input = input / input.view(batches, -1).norm(dim=1).view(batches, *torch.ones((len(in_volume) + 1,), dtype=torch.int32))
     start_time = time.time()
-    y_native = native_net(input)
+    output_native = native_net(unit_input)
     native_time = time.time() - start_time
     start_time = time.time()
-    y_cl = cl_net(input)
+    output_cl = cl_net(input)
     cl_time = time.time() - start_time
     start_time = time.time()
-    y_cl = cl_net(input)
+    output_cl = cl_net(input)
     cl_cached_time = time.time() - start_time
     # Compare results
-    if torch.max(torch.abs(y_native - y_cl)) > tol:
-        raise RuntimeError(f'\ny_native = {y_native}\ny_cl = {y_cl}')
+    if torch.max(torch.abs(output_native - output_cl)) > tol:
+        raise RuntimeError(f'\nnative = {output_native}\ncl = {output_cl}')
     return native_time, cl_time, cl_cached_time

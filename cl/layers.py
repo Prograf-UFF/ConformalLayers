@@ -1,6 +1,6 @@
 from .activation import BaseActivation, NoActivation, SRePro
 from .decorator import sync, singleton
-from .extension import IdentityMatrix, ZeroTensor
+from .extension import IdentityMatrix, SparseTensor, ZeroTensor
 from .module import ConformalModule
 from .utils import _size_any_t
 from typing import Iterator, List, Tuple, Union
@@ -34,7 +34,7 @@ class _EyeFactory(object):
             feats = torch.zeros(in_numel, in_channels)
             for channel in range(in_channels):
                 feats[channel*in_entries:(channel+1)*in_entries, channel] = 1
-            eye = me.SparseTensor(coords=coords, feats=feats)
+            eye = me.SparseTensor(feats, coords)
             self._cache[key] = eye
         return eye
 
@@ -64,8 +64,8 @@ class ConformalLayers(torch.nn.Module):
         # Initialize cached data with null values
         self._valid_cache = False
         self._cached_signature: _cached_signature_t = None
-        self._cached_matrix: Union[torch.Tensor, CustomTensor] = None
-        self._cached_tensor: Union[torch.Tensor, CustomTensor] = None
+        self._cached_matrix: Union[SparseTensor, IdentityMatrix] = None
+        self._cached_flat_tensor: Union[SparseTensor, ZeroTensor] = None
 
     def __repr__(self) -> str:
         return f'ConformalLayers{*self._modules,}'
@@ -79,20 +79,50 @@ class ConformalLayers(torch.nn.Module):
     def __len__(self) -> int:
         return len(self._modules)
 
-    def _compute_sequential_matrix(self, in_channels: int, in_volume: _size_any_t, out_channels: int, out_volume: _size_any_t, sequential: torch.nn.Module) -> torch.Tensor:
+    def _compute_torch_module_matrix(self, in_channels: int, in_volume: _size_any_t, out_channels: int, out_volume: _size_any_t, module: torch.nn.Module) -> SparseTensor:
         in_numel = in_channels * numpy.prod(in_volume)
         out_numel = out_channels * numpy.prod(out_volume)
-        tensor = sequential(EYE_FACTORY.get(in_channels, in_volume))
+        tensor = module(EYE_FACTORY.get(in_channels, in_volume))
         coords = tensor.coords.view(-1, 1 + len(out_volume), 1).expand(-1, -1, out_channels).permute(0, 2, 1)
         coords = torch.cat((coords, torch.empty((len(coords), out_channels, 1), dtype=torch.int32)), 2)
         for channel in range(out_channels):
             coords[:, channel, -1] = channel
         coords = coords.view(-1, len(out_volume) + 2)
-        coords = numpy.unravel_index(numpy.ravel_multi_index(tuple(coords[:, dim] for dim in (0, -1, *range(1, coords.shape[1] - 1))), (in_numel, out_channels, *out_volume)), shape=(in_numel, out_numel))
-        feats = tensor.feats.view(-1)
-        matrix = torch.sparse_coo_tensor((coords[1], coords[0]), feats, size=(out_numel + 1, in_numel + 1), dtype=feats.dtype)
-        matrix += torch.sparse_coo_tensor(((out_numel,), (in_numel,)), (1,), size=(out_numel + 1, in_numel + 1), dtype=feats.dtype)
-        return matrix
+        row, col = numpy.unravel_index(numpy.ravel_multi_index(tuple(coords[:, dim] for dim in (0, -1, *range(1, coords.shape[1] - 1))), (in_numel, out_channels, *out_volume)), (in_numel, out_numel))
+        row = numpy.concatenate((row, (in_numel,))) #TODO Cópia de memória na concatenação
+        col = numpy.concatenate((col, (out_numel,))) #TODO Cópia de memória na concatenação
+        values = tensor.feats.view(-1)
+        values = torch.cat((values, torch.as_tensor((1,), dtype=values.dtype))) #TODO Cópia de memória na concatenação
+        return SparseTensor((col, row), values, (out_numel + 1, in_numel + 1), coalesced=False)
+
+    def _poor_mans_tensordots(self, activation_tensor: Union[SparseTensor, ZeroTensor], backward_prod_matrix: Union[SparseTensor, IdentityMatrix], forward_prod_sequential_matrix: SparseTensor) -> Union[SparseTensor, ZeroTensor]:
+        A = activation_tensor               # Rank-3 tensor of size (s2, s2, s2)
+        B = backward_prod_matrix            # Rank-2 tensor of size (s1, s2)
+        C = forward_prod_sequential_matrix  # Rank-2 tensor of size (s2, s3)
+                                            # output <- TensorDot[B, Transpose[TensorDot[TensorDot[Transpose[C, 0 <-> 1], Transpose[A]], C], 0 <-> 1]]
+                                            #         = TensorDot[Transpose[TensorDot[B, TensorDot[Transpose[A, 1 <-> 2], C]], 1 <-> 2], C] is a rank-3 tensor of size (s1, s3, s3)
+                                            # flat_output <- MatMul[FlattenLeft[Transpose[ReshapeRight[MatMul[B, FlattenRight[ReshapeLeft[MatMul[FlattenLeft[Transpose[A, 1 <-> 2]], C]]]]], 1 <-> 2]], C] is a rank-2 tensor of size (s1 * s3, s3)
+        (s1, s2), (_, s3) = B.shape, C.shape
+        # Check for trivial solution...
+        if isinstance(A, ZeroTensor):
+            return ZeroTensor((s1 * s3, s3), A.dtype)
+        # ... otherwise, do it the hard way
+        # Step 1: temp1 = FlattenLeft[Transpose[A, 1 <-> 2]]
+        indices1 = numpy.unravel_index(numpy.ravel_multi_index((A.indices[0], A.indices[2], A.indices[1]), (s2, s2, s2)), (s2 * s2, s2))
+        temp1 = SparseTensor(indices1, A.values, (s2 * s2, s2), coalesced=False)
+        # Step 2: temp2 = MatMul(temp1, C)
+        temp2 = torch.mm(temp1, C)
+        # Step 3: temp3 = FlattenRight[ReshapeLeft[temp2]]
+        indices3 = numpy.unravel_index(numpy.ravel_multi_index((temp2.indices[0], temp2.indices[1]), (s2 * s2, s3)), (s2, s2 * s3))
+        temp3 = SparseTensor(indices3, temp2.values, (s2, s2 * s3), coalesced=False)
+        # Step 4: temp4 = MatMul(B, temp3)
+        temp4 = torch.mm(B, temp3)
+        # Step 5: temp5 = FlattenLeft[Transpose[ReshapeRight[temp4], 1 <-> 2]]
+        indices5 = numpy.unravel_index(numpy.ravel_multi_index((temp4.indices[0], temp4.indices[1]), (s1, s2 * s3)), (s1, s2, s3))
+        indices5 = numpy.unravel_index(numpy.ravel_multi_index((indices5[0], indices5[2], indices5[1]), (s1, s3, s2)), (s1 * s3, s2))
+        temp5 = SparseTensor(indices5, temp4.values, (s1 * s3, s2), coalesced=False)
+        # Step 6: flat_output = MatMul(temp5, C)
+        return torch.mm(temp5, C)
 
     def _update_cache(self, in_channels: int, in_volume: _size_any_t, dtype: torch.dtype) -> _cached_signature_t:
         in_signature = (in_channels, in_volume)
@@ -107,7 +137,7 @@ class ConformalLayers(torch.nn.Module):
                     for module in sequential:
                         out_channels, out_volume = module.output_size(out_channels, out_volume)
                     # Make tensor representations of the operations in the current layer
-                    sequential_matrix = self._compute_sequential_matrix(in_channels, in_volume, out_channels, out_volume, sequential)
+                    sequential_matrix = self._compute_torch_module_matrix(in_channels, in_volume, out_channels, out_volume, sequential)
                     activation_matrix, activation_tensor = activation.to_tensor(sequential_matrix)
                     tensors[layer] = (sequential_matrix, activation_matrix, activation_tensor)
                     # Get ready for the next layer
@@ -118,50 +148,25 @@ class ConformalLayers(torch.nn.Module):
                 backward_prod_matrix = IdentityMatrix(out_numel + 1, dtype=dtype)
                 backward_prod_matrices[self.nlayers - 1] = backward_prod_matrix
                 for layer, (sequential_matrix, activation_matrix, _) in zip(range(self.nlayers - 2, -1, -1), tensors[-1:-self.nlayers:-1]):
-                    backward_prod_matrix = torch.matmul(backward_prod_matrix, torch.matmul(activation_matrix, sequential_matrix))
+                    backward_prod_matrix = torch.mm(backward_prod_matrix, torch.mm(activation_matrix, sequential_matrix))
                     backward_prod_matrices[layer] = backward_prod_matrix
                 # Compute the final matrix encoding the Conformal Layers
                 sequential_matrix, activation_matrix, _ = tensors[0]
-                cached_matrix = torch.matmul(backward_prod_matrix, torch.matmul(activation_matrix, sequential_matrix))
-                cached_matrix = cached_matrix.coalesce() #TODO Precisa somar valores em coordenadas duplicadas?
+                cached_matrix = torch.mm(backward_prod_matrix, torch.mm(activation_matrix, sequential_matrix))
                 # Compute the final tensor encoding the Conformal Layers
-                cached_tensor = torch.sparse_coo_tensor(size=(out_numel + 1, in_numel + 1, in_numel + 1), dtype=dtype)
+                cached_flat_tensor = ZeroTensor(((out_numel + 1) * (in_numel + 1), in_numel + 1), dtype=dtype)
                 forward_prod_sequential_matrix = IdentityMatrix(in_numel + 1, dtype=dtype)
                 for backward_prod_matrix, (sequential_matrix, _, activation_tensor) in zip(backward_prod_matrices, tensors):
-                    forward_prod_sequential_matrix = torch.matmul(sequential_matrix, forward_prod_sequential_matrix)
-                    torch.add(cached_tensor, torch.tensordot(backward_prod_matrix, torch.tensordot(torch.tensordot(forward_prod_sequential_matrix, activation_tensor, dims=((0,), (1,))), forward_prod_sequential_matrix, dims=1), dims=((1,), (1,))), cached_tensor)
-                cached_tensor = cached_tensor.coalesce() #TODO Precisa somar valores em coordenadas duplicadas?
+                    forward_prod_sequential_matrix = torch.mm(sequential_matrix, forward_prod_sequential_matrix)
+                    cached_flat_tensor = torch.add(cached_flat_tensor, self._poor_mans_tensordots(activation_tensor, backward_prod_matrix, forward_prod_sequential_matrix))
             else:
                 cached_matrix = IdentityMatrix(in_numel + 1, dtype=dtype)
-                cached_tensor = ZeroTensor((in_numel + 1, in_numel + 1, in_numel + 1), dtype=dtype)
+                cached_flat_tensor = ZeroTensor(((in_numel + 1) * (in_numel + 1), in_numel + 1), dtype=dtype)
             self._cached_matrix = cached_matrix
-            self._cached_tensor = cached_tensor
+            self._cached_flat_tensor = cached_flat_tensor
             # Set cached data as valid
             self._valid_cache = True
             self._cached_signature = (in_signature, (out_channels, out_volume), dtype)
-
-            # in_numel = in_channels * numpy.prod(in_volume)
-            # # Compute the number of channels and volume of the resulting batch entries
-            # out_channels, out_volume = in_channels, in_volume
-            # for curr in self._modules:
-            #     out_channels, out_volume = curr.output_size(out_channels, out_volume)
-            # out_numel = out_channels * numpy.prod(out_volume)
-            # # Create a sparse tensor that decomposes any input
-            # eye = EYE_FACTORY.get(in_channels, in_volume)
-            # # Apply the modules to the eye tensor and make the tensor representation of the complete operation
-            # assert self.nlayers == 1 #TODO Implementar a operação completa
-            # result = self._sequentials[-1](eye) #TODO Encapsular esse processo em uma função
-            # res_coords = result.coords.view(-1, 1 + len(out_volume), 1).expand(-1, -1, out_channels).permute(0, 2, 1)
-            # res_coords = torch.cat((res_coords, torch.empty((len(res_coords), out_channels, 1), dtype=torch.int32)), 2)
-            # for channel in range(out_channels):
-            #     res_coords[:, channel, -1] = channel
-            # res_coords = res_coords.view(-1, len(out_volume) + 2)
-            # res_feats = result.feats.view(-1)
-            # matrix_coords = numpy.unravel_index(numpy.ravel_multi_index(tuple(res_coords[:, dim] for dim in (0, -1, *range(1, res_coords.shape[1] - 1))), (in_numel, out_channels, *out_volume)), shape=(in_numel, out_numel))
-            # self._cached_matrix = torch.sparse_coo_tensor((matrix_coords[1], matrix_coords[0]), res_feats, size=(out_numel, in_numel), dtype=res_feats.dtype)
-            # # Set cached data as valid
-            # self._valid_cache = True
-            # self._cached_signature = ((in_channels, in_volume), (out_channels, out_volume))
         return self._cached_signature
 
     def forward(self, input: torch.Tensor):
@@ -172,10 +177,20 @@ class ConformalLayers(torch.nn.Module):
         input_as_matrix = input.view(batches, -1).t()
         input_as_matrix = torch.cat((input_as_matrix, input_as_matrix.norm(dim=0, keepdim=True)), dim=0) #TODO É possível eviar a cópia de memória?
         # Apply the Conformal Layers
-        temp = torch.tensordot(self._cached_tensor, input_as_matrix, dims=1)
-        output_as_matrix = torch.matmul(torch.add(temp, self._cached_matrix, temp), input_as_matrix)
+        output_as_matrix = torch.matmul(self._cached_matrix, input_as_matrix)
+        torch.add(
+            output_as_matrix,
+            torch.matmul( #TODO Essas multiplicações são muito custosa. Deve ser possível economizar, pois só a última fatia do tensor de rank 3 não é igual a zero. Mesmo assim, essa fatia contém (in_numel, in_numel) valores. Isso é muita memória!
+                torch.matmul(
+                    self._cached_flat_tensor,
+                    input_as_matrix
+                ).view(*self._cached_matrix.shape, batches).permute(2, 0, 1),
+                input_as_matrix.t().view(batches, -1, 1)
+            ).view(batches, -1).t(),
+            out=output_as_matrix)
+        output_as_matrix[:-1, :] /= output_as_matrix[-1, :]
         # Reshape the result to the expected format
-        return output_as_matrix.t().view(batches, out_channels, *out_volume)
+        return output_as_matrix[:-1, :].t().view(batches, out_channels, *out_volume)
 
     def invalidate_cache(self) -> None:
         self._valid_cache = False

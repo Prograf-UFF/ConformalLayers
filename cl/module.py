@@ -53,12 +53,12 @@ class _MinkowskiOperationWrapper(torch.nn.Module):
             out_coords[:, 1:] -= index_start
             if (self.stride != 1).any():
                 out_coords[:, 1:] //= self.stride
-            return me.SparseTensor(coords=out_coords, feats=out_feats, coords_manager=input.coords_man, force_creation=True)
+            return me.SparseTensor(out_feats, out_coords, coords_manager=input.coords_man, force_creation=True)
         elif (self.stride != 1).any():
             out_coords[:, 1:] //= self.stride
-            return me.SparseTensor(coords=out_coords, feats=out_feats, coords_manager=input.coords_man, force_creation=True)
+            return me.SparseTensor(out_feats, out_coords, coords_manager=input.coords_man, force_creation=True)
         else:
-            return me.SparseTensor(coords_key=out_coords_key, feats=out_feats, coords_manager=input.coords_man)
+            return me.SparseTensor(out_feats, coords_key=out_coords_key, coords_manager=input.coords_man)
 
     @abstractmethod
     def output_size(self, in_channels: int, in_volume: _size_any_t) -> Tuple[int, _size_any_t]:
