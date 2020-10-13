@@ -49,7 +49,7 @@ class SRePro(BaseActivation):
         # Compute the alpha parameter
         if self._alpha is None:
             symmetric = torch.mm(previous, previous.t())
-            alpha = torch.sqrt(math.sqrt(symmetric.nnz) * symmetric.values[:-1, ...].max(0, keepdim=True)[0]) # We use symmetric.values[:-1, ...] to skeep the homogeneous coordinate (it is always 1 and does not affect the transformed vector).
+            alpha = torch.sqrt(math.sqrt(symmetric.nnz) * symmetric.values[:-1, ...].abs().max(0, keepdim=True)[0]) # We use symmetric.values[:-1, ...] to skeep the homogeneous coordinate (it is always 1 and does not affect the transformed vector).
         else:
             alpha = torch.as_tensor((self.alpha,), dtype=previous.dtype)
         # Compute the non-constant coefficient of the matrix

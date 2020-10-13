@@ -41,6 +41,9 @@ def main():
         for l in range(k):
             modules += layers[l]
         net = cl.ConformalLayers(*modules)
+
+        y = cl.ConformalLayers()(input)
+
         output = net(input)
         if torch.max(torch.abs(expected[k-1] - output)) > tol:
             raise RuntimeError(f'expected = {expected[k-1]}\n  output = {output}')

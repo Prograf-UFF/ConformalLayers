@@ -157,11 +157,11 @@ class SparseTensor(CustomTensor):
 
     def copy_(self, src: CustomTensor) -> 'SparseTensor':
         if isinstance(scr, IdentityMatrix): #TODO Lidar com broadcast
-            pass #TODO Implementar
+            raise NotImplementedError() #TODO Implementar
         elif isinstance(scr, SparseTensor):
-            pass #TODO Implementar
+            raise NotImplementedError() #TODO Implementar
         elif isinstance(scr, ZeroTensor):
-            pass #TODO Implementar
+            raise NotImplementedError() #TODO Implementar
         raise RuntimeError('copy_() expects a src CustomTensor object broadcastable with self.')
 
     def permute(self, *dims: int) -> 'SparseTensor':
@@ -377,9 +377,9 @@ def _mm(lhs: Union[torch.Tensor, CustomTensor], rhs: Union[torch.Tensor, CustomT
         elif isinstance(rhs, ZeroTensor):
             return ZeroTensor((lhs.shape[0], rhs.shape[1]), dtype=lhs.dtype)
         elif isinstance(rhs, torch.Tensor):
+            lhs.coalesce()
             return torch_sparse.spmm(lhs.indices, lhs.values, lhs.shape[0], lhs.shape[1], rhs)
     elif isinstance(lhs, ZeroTensor):
-        lhs.coalesce()
         return ZeroTensor((lhs.shape[0], rhs.shape[1]), dtype=rhs.dtype)
     elif isinstance(lhs, torch.Tensor):
         if isinstance(rhs, IdentityMatrix):

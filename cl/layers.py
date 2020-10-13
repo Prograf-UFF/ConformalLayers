@@ -183,7 +183,7 @@ class ConformalLayers(torch.nn.Module):
         # Apply the Conformal Layers
         output_as_matrix = torch.add(
             torch.matmul(self._cached_matrix, input_as_matrix),
-            torch.matmul( #TODO Essas multiplicações são muito custosa. Deve ser possível economizar, pois só a última fatia do tensor de rank 3 não é igual a zero. Mesmo assim, essa fatia contém (in_numel, in_numel) valores. Isso é muita memória!
+            torch.matmul( #TODO Essas multiplicações são muito custosa. Deve ser possível economizar, pois só a última fatia do tensor de rank 3 não é igual a zero.
                 torch.matmul(
                     self._cached_flat_tensor,
                     input_as_matrix
