@@ -177,17 +177,15 @@ class ConformalLayers(torch.nn.Module):
         input_as_matrix = input.view(batches, -1).t()
         input_as_matrix = torch.cat((input_as_matrix, input_as_matrix.norm(dim=0, keepdim=True)), dim=0) #TODO É possível eviar a cópia de memória?
         # Apply the Conformal Layers
-        output_as_matrix = torch.matmul(self._cached_matrix, input_as_matrix)
-        torch.add(
-            output_as_matrix,
+        output_as_matrix = torch.add(
+            torch.matmul(self._cached_matrix, input_as_matrix),
             torch.matmul( #TODO Essas multiplicações são muito custosa. Deve ser possível economizar, pois só a última fatia do tensor de rank 3 não é igual a zero. Mesmo assim, essa fatia contém (in_numel, in_numel) valores. Isso é muita memória!
                 torch.matmul(
                     self._cached_flat_tensor,
                     input_as_matrix
                 ).view(*self._cached_matrix.shape, batches).permute(2, 0, 1),
                 input_as_matrix.t().view(batches, -1, 1)
-            ).view(batches, -1).t(),
-            out=output_as_matrix)
+            ).view(batches, -1).t())
         output_as_matrix[:-1, :] /= output_as_matrix[-1, :]
         # Reshape the result to the expected format
         return output_as_matrix[:-1, :].t().view(batches, out_channels, *out_volume)

@@ -4,7 +4,7 @@ from .module import ConformalModule
 from .utils import _size_any_t
 from abc import abstractmethod
 from typing import Optional, Tuple, Union
-import numpy, torch
+import math, numpy, torch
 
 
 class BaseActivation(ConformalModule):
@@ -22,12 +22,12 @@ class NoActivation(BaseActivation):
     def __repr__(self) -> str:
        return f'{self.__class__.__name__}({self._extra_repr(False)})'
 
+    def output_size(self, in_channels: int, in_volume: _size_any_t) -> Tuple[int, _size_any_t]:
+        return in_channels, in_volume
+
     def to_tensor(self, previous: SparseTensor) -> Tuple[IdentityMatrix, ZeroTensor]:
         nrows, _ = previous.shape
         return IdentityMatrix(nrows, dtype=previous.dtype), ZeroTensor((nrows, nrows, nrows), dtype=previous.dtype)
-
-    def output_size(self, in_channels: int, in_volume: _size_any_t) -> Tuple[int, _size_any_t]:
-        return in_channels, in_volume
 
 
 class SRePro(BaseActivation):
@@ -35,33 +35,34 @@ class SRePro(BaseActivation):
                  alpha: Optional[float]=None,
                  name: Optional[str]=None) -> None:
         super(SRePro, self).__init__(name)
-        self._alpha = alpha
+        self._alpha = float(alpha) if not alpha is None else None
 
     def __repr__(self) -> str:
        return f'{self.__class__.__name__}(alpha={self.alpha}{self._extra_repr(True)})'
+
+    def output_size(self, in_channels: int, in_volume: _size_any_t) -> Tuple[int, _size_any_t]:
+        return in_channels, in_volume
 
     def to_tensor(self, previous: SparseTensor) -> Tuple[SparseTensor, SparseTensor]:
         nrows, _ = previous.shape
         ind = numpy.arange(nrows, dtype=numpy.int64)
         # Compute the alpha parameter
         if self._alpha is None:
-            alpha = previous.max() #TODO Parei aqui!
+            symmetric = torch.mm(previous, previous.t())
+            alpha = torch.sqrt(math.sqrt(symmetric.nnz) * symmetric.values[:-1, ...].max(0, keepdim=True)[0]) # We use symmetric.values[:-1, ...] to skeep the homogeneous coordinate (it is always 1 and does not affect the transformed vector).
         else:
-            alpha = self.alpha
+            alpha = torch.as_tensor((self.alpha,), dtype=previous.dtype)
         # Compute the non-constant coefficient of the matrix
         matrix_values = torch.ones((nrows,), dtype=previous.dtype)
         matrix_values[-1] = 0.5 * alpha
         matrix = SparseTensor((ind, ind), matrix_values, (nrows, nrows), coalesced=True)
         # Make rank-3 tensor
         max_ind = numpy.full((nrows - 1,), nrows - 1, dtype=numpy.int64)
-        tensor_values = torch.full((nrows - 1,), 1 / (2 * alpha), dtype=previous.dtype)
+        tensor_values = (1 / (2 * alpha)).expand(nrows - 1)
         tensor = SparseTensor((max_ind, ind[:-1], ind[:-1]), tensor_values, (nrows, nrows, nrows), coalesced=True)
         # Return tensor representation of the activation function
         return matrix, tensor
     
-    def output_size(self, in_channels: int, in_volume: _size_any_t) -> Tuple[int, _size_any_t]:
-        return in_channels, in_volume
-
     @property
-    def alpha(self):
+    def alpha(self) -> Optional[float]:
         return self._alpha

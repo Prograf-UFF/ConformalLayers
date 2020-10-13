@@ -3,6 +3,8 @@ from abc import ABC, abstractmethod
 from typing import Callable, Iterable, Optional, Tuple, Union
 import functools, numpy, re, torch, torch_sparse
 
+assert torch_sparse.__version__ == '0.4.4', 'Proper autograd support in torch_sparse.spspmm() implemented only in version 0.4.4 (see https://github.com/rusty1s/pytorch_sparse/issues/45).'
+
 
 HANDLED_FUNCTIONS = {}
 
@@ -16,10 +18,9 @@ def implements(torch_function: Callable):
 
 
 class CustomTensor(ABC):
-    def __init__(self, size: Iterable[int], dtype: torch.dtype) -> None:
+    def __init__(self, size: Iterable[int]) -> None:
         super(CustomTensor, self).__init__()
         self._size = torch.Size(size)
-        self._dtype = dtype
 
     def __torch_function__(self, func, types, args=(), kwargs=None):
         if kwargs is None:
@@ -44,6 +45,9 @@ class CustomTensor(ABC):
     def mm(self, other: Union[torch.Tensor, 'CustomTensor']) -> Union[torch.Tensor, 'CustomTensor']:
         return torch.mm(self, other)
 
+    def numel(self) -> int:
+        return numpy.prod(self.shape)
+    
     @abstractmethod
     def permute(self, *dims: int) -> 'CustomTensor':
         pass
@@ -64,8 +68,18 @@ class CustomTensor(ABC):
         return len(self._size)
 
     @property
+    @abstractmethod
+    def nnz(self) -> int:
+        pass
+
+    @property
+    def nelement(self) -> int:
+        return numpy.prod(self.shape)
+
+    @property
+    @abstractmethod
     def dtype(self) -> torch.dtype:
-        return self._dtype
+        pass
 
     @property
     def shape(self) -> torch.Size:
@@ -74,7 +88,8 @@ class CustomTensor(ABC):
 
 class IdentityMatrix(CustomTensor):
     def __init__(self, size: int, dtype: torch.dtype) -> None:
-        super(IdentityMatrix, self).__init__((size, size), dtype)
+        super(IdentityMatrix, self).__init__((size, size))
+        self._dtype = dtype
 
     def __repr__(self) -> str:
         return f'{__class__.__name__}(size={(*self.shape,)}, dtype={self.dtype})'
@@ -101,12 +116,20 @@ class IdentityMatrix(CustomTensor):
         ind = numpy.arange(self.shape[0], dtype=numpy.int64)
         return torch.sparse_coo_tensor((ind, ind), torch.ones((self.shape[0],), dtype=self.dtype), size=self.shape)
 
+    @property
+    def dtype(self) -> torch.dtype:
+        return self._dtype
+
+    @property
+    def nnz(self) -> int:
+        return self.shape[0]
+
 
 class SparseTensor(CustomTensor):
     def __init__(self, indices: torch.LongTensor, values: torch.Tensor, size: Iterable[int], *, coalesced: bool) -> None:
-        super(SparseTensor, self).__init__(size, values.dtype)
+        super(SparseTensor, self).__init__(size)
         self._indices = torch.as_tensor(indices, dtype=torch.int64)
-        self._values = torch.as_tensor(values)
+        self._values = torch.as_tensor(values) #TODO Manter os canais nos valores e usar o conceito de sparse_dim e dense_dim. Isso levara a alphas diferentes. É o que queremos?
         self._coalesced = coalesced
 
     def __repr__(self) -> str:
@@ -137,11 +160,11 @@ class SparseTensor(CustomTensor):
             raise ValueError('Repeated dim in permute.')
         if numpy.any(dims < -self.ndim) or numpy.any(self.ndim <= dims):
             raise ValueError('Dimension out of range.')
-        return SparseTensor(self.indices[dims], self.values, (self.shape[dim] for dim in dims), coalesced=True)
+        return SparseTensor(self.indices[dims], self.values, (self.shape[dim] for dim in dims), coalesced=False)
 
     def t(self) -> 'SparseTensor':
         if self.ndim == 2:
-            return SparseTensor((self.indices[1], self.indices[0]), self.values, (self.shape[1], self.shape[0]), coalesced=False)
+            return SparseTensor(self.indices[[1, 0]], self.values, (self.shape[1], self.shape[0]), coalesced=False)
         elif self.ndim < 2:
             return self
         raise RuntimeError('t() expects a tensor with <= 2 dimensions.')
@@ -154,8 +177,17 @@ class SparseTensor(CustomTensor):
         return self._coalesced
 
     @property
+    def dtype(self) -> torch.dtype:
+        return self._values.dtype
+
+    @property
     def indices(self) -> torch.LongTensor:
         return self._indices
+
+    @property
+    def nnz(self) -> int:
+        self.coalesce()
+        return len(self.values)
 
     @property
     def values(self) -> torch.Tensor:
@@ -164,7 +196,8 @@ class SparseTensor(CustomTensor):
 
 class ZeroTensor(CustomTensor):
     def __init__(self, size: Iterable[int], dtype: torch.dtype) -> None:
-        super(ZeroTensor, self).__init__(size, dtype)
+        super(ZeroTensor, self).__init__(size)
+        self._dtype = dtype
 
     def __repr__(self) -> str:
         return f'{__class__.__name__}(size={(*self.shape,)}, dtype={self.dtype})'
@@ -208,6 +241,14 @@ class ZeroTensor(CustomTensor):
         if size != numpy.prod(view_shape):
             raise ValueError(f'Shape {*map(int, shape),} is invalid for input of size {size}.') 
         return ZeroTensor(view_shape, dtype=self.dtype)
+
+    @property
+    def dtype(self) -> torch.dtype:
+        return self._dtype
+
+    @property
+    def nnz(self) -> int:
+        return 0
 
 
 @implements(torch.add)
