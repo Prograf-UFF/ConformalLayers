@@ -3,14 +3,15 @@ from .extension import IdentityMatrix, SparseTensor, ZeroTensor
 from .module import ConformalModule
 from .utils import _size_any_t
 from abc import abstractmethod
+from collections import OrderedDict
 from typing import Optional, Tuple, Union
 import math, numpy, torch
 
 
 class BaseActivation(ConformalModule):
     def __init__(self,
-                 name: Optional[str]=None) -> None:
-        super(BaseActivation, self).__init__(name)
+                 *, name: Optional[str]=None) -> None:
+        super(BaseActivation, self).__init__(name=name)
 
     @abstractmethod
     def to_tensor(self, previous: SparseTensor) -> Tuple[Union[SparseTensor, IdentityMatrix], Union[SparseTensor, ZeroTensor]]:
@@ -19,9 +20,6 @@ class BaseActivation(ConformalModule):
 
 @singleton
 class NoActivation(BaseActivation):
-    def __repr__(self) -> str:
-       return f'{self.__class__.__name__}({self._extra_repr(False)})'
-
     def output_size(self, in_channels: int, in_volume: _size_any_t) -> Tuple[int, _size_any_t]:
         return in_channels, in_volume
 
@@ -33,12 +31,14 @@ class NoActivation(BaseActivation):
 class SRePro(BaseActivation):
     def __init__(self,
                  alpha: Optional[float]=None,
-                 name: Optional[str]=None) -> None:
-        super(SRePro, self).__init__(name)
+                 *, name: Optional[str]=None) -> None:
+        super(SRePro, self).__init__(name=name)
         self._alpha = float(alpha) if not alpha is None else None
 
-    def __repr__(self) -> str:
-       return f'{self.__class__.__name__}(alpha={self.alpha}{self._extra_repr(True)})'
+    def _repr_dict(self) -> OrderedDict:
+        entries = super()._repr_dict()
+        entries['alpha'] = 'Automatic' if self._alpha is None else self._alpha
+        return entries
 
     def output_size(self, in_channels: int, in_volume: _size_any_t) -> Tuple[int, _size_any_t]:
         return in_channels, in_volume

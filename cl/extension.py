@@ -1,5 +1,6 @@
 from .decorator import singleton
 from abc import ABC, abstractmethod
+from collections import OrderedDict
 from typing import Callable, Iterable, Optional, Tuple, Union
 import functools, numpy, re, torch, torch_sparse
 
@@ -22,12 +23,24 @@ class CustomTensor(ABC):
         super(CustomTensor, self).__init__()
         self._size = torch.Size(size)
 
+    def __repr__(self) -> str:
+        entries_str = ',\n    '.join(map(lambda pair: '{}={}'.format(*pair), self._repr_dict().items()))
+        return f'{self.__class__.__name__}(\n    {entries_str})'
+
     def __torch_function__(self, func, types, args=(), kwargs=None):
         if kwargs is None:
             kwargs = {}
         if func not in HANDLED_FUNCTIONS:
             return NotImplemented
         return HANDLED_FUNCTIONS[func](*args, **kwargs)
+
+    def _repr_dict(self) -> OrderedDict:
+        entries = OrderedDict()
+        entries['size'] = tuple(map(int, self.shape))
+        entries['nelement'] = self.nelement
+        entries['nnz'] = self.nnz
+        entries['dtype'] = self.dtype
+        return entries
 
     def add(self, other: Union[torch.Tensor, 'CustomTensor']) -> Union[torch.Tensor, 'CustomTensor']:
         return torch.add(self, other)
@@ -91,9 +104,6 @@ class IdentityMatrix(CustomTensor):
         super(IdentityMatrix, self).__init__((size, size))
         self._dtype = dtype
 
-    def __repr__(self) -> str:
-        return f'{__class__.__name__}(size={(*self.shape,)}, dtype={self.dtype})'
-
     def copy_(self, src: 'IdentityMatrix') -> 'IdentityMatrix':
         if isinstance(scr, IdentityMatrix) and self.shape == scr.shape:
             return self
@@ -132,9 +142,11 @@ class SparseTensor(CustomTensor):
         self._values = torch.as_tensor(values) #TODO Manter os canais nos valores e usar o conceito de sparse_dim e dense_dim. Isso levara a alphas diferentes. É o que queremos?
         self._coalesced = coalesced
 
-    def __repr__(self) -> str:
-        values_repr = re.sub('(?:\n *)', ' ', repr(self.values))
-        return f'{__class__.__name__}(\n    indices={[*map(lambda arg: tuple(map(int, arg)), self.indices.t())]},\n    values={values_repr},\n    size={(*self.shape,)},\n    dtype={self.dtype})'
+    def _repr_dict(self) -> OrderedDict:
+        entries = super()._repr_dict()
+        entries['indices'] = [*map(lambda arg: tuple(map(int, arg)), self.indices.t())]
+        entries['values'] = re.sub('(?:\n *)', ' ', repr(self.values))
+        return entries
 
     def coalesce(self, force: Optional[bool]=False):
         if force or not self.coalesced:
@@ -198,9 +210,6 @@ class ZeroTensor(CustomTensor):
     def __init__(self, size: Iterable[int], dtype: torch.dtype) -> None:
         super(ZeroTensor, self).__init__(size)
         self._dtype = dtype
-
-    def __repr__(self) -> str:
-        return f'{__class__.__name__}(size={(*self.shape,)}, dtype={self.dtype})'
 
     def copy_(self, scr: 'ZeroTensor') -> 'ZeroTensor':
         if isinstance(scr, ZeroTensor): #TODO Lidar com broadcast

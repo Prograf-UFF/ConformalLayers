@@ -1,5 +1,6 @@
 from .utils import _size_any_t
 from abc import ABC, abstractmethod
+from collections import OrderedDict
 from typing import Optional, Tuple
 import MinkowskiEngine as me
 import torch
@@ -90,12 +91,18 @@ class _MinkowskiOperationWrapper(torch.nn.Module):
 
 
 class ConformalModule(ABC):
-    def __init__(self, name: Optional[str]=None) -> None:
+    def __init__(self, *, name: Optional[str]=None) -> None:
         super(ConformalModule, self).__init__()
         self._name = name
 
-    def _extra_repr(self, comma: bool) -> str:
-        return '' if self._name is None else f'{", " if comma else ""}name={self._name}'
+    def __repr__(self) -> str:
+        return f'{self.__class__.__name__}({", ".join(map(lambda pair: "{}={}".format(*pair), self._repr_dict().items()))})'
+
+    def _repr_dict(self) -> OrderedDict:
+        entries = OrderedDict()
+        if not self._name is None:
+            entries['name'] = self.name
+        return entries
 
     def _register_parent(self, parent, index: int) -> None:
         pass

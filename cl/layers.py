@@ -3,6 +3,7 @@ from .decorator import sync, singleton
 from .extension import IdentityMatrix, SparseTensor, ZeroTensor
 from .module import ConformalModule
 from .utils import _size_any_t
+from collections import OrderedDict
 from typing import Iterator, List, Tuple, Union
 import MinkowskiEngine as me
 import numpy, operator, threading, torch
@@ -67,9 +68,6 @@ class ConformalLayers(torch.nn.Module):
         self._cached_matrix: Union[SparseTensor, IdentityMatrix] = None
         self._cached_flat_tensor: Union[SparseTensor, ZeroTensor] = None
 
-    def __repr__(self) -> str:
-        return f'ConformalLayers{*self._modules,}'
-
     def __getitem__(self, index: int) -> ConformalModule:
         return self._modules[index]
 
@@ -78,6 +76,12 @@ class ConformalLayers(torch.nn.Module):
     
     def __len__(self) -> int:
         return len(self._modules)
+
+    def __repr__(self) -> str:
+        if len(self._modules) != 0:
+            modules_str = ',\n    '.join(map(lambda pair: f'{pair[0]}: {pair[1]}', enumerate(self._modules)))
+            return f'{self.__class__.__name__}(\n    {modules_str})'
+        return f'{self.__class__.__name__}( ¯\_(ツ)_/¯ )'
 
     def _compute_torch_module_matrix(self, in_channels: int, in_volume: _size_any_t, out_channels: int, out_volume: _size_any_t, module: torch.nn.Module) -> SparseTensor:
         in_numel = in_channels * numpy.prod(in_volume)

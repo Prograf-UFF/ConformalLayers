@@ -1,5 +1,6 @@
 from .module import _MinkowskiOperationWrapper, ConformalModule
 from .utils import _int_or_size_1_t, _int_or_size_2_t, _int_or_size_3_t, _size_any_t, _pair, _single, _triple
+from collections import OrderedDict
 from typing import Optional, Tuple
 import MinkowskiEngine as me
 import torch
@@ -38,16 +39,21 @@ class AvgPoolNd(ConformalModule):
                  stride: Optional[_size_any_t],
                  padding: _size_any_t,
                  dilation: _size_any_t,
-                 name: Optional[str]=None) -> None:
-        super(AvgPoolNd, self).__init__(name)
+                 *, name: Optional[str]=None) -> None:
+        super(AvgPoolNd, self).__init__(name=name)
         self._native = _WrappedMinkowskiAvgPooling(
             kernel_size=kernel_size,
             stride=kernel_size if stride is None else stride,
             padding=padding,
             dilation=dilation)
 
-    def __repr__(self) -> str:
-       return f'{self.__class__.__name__}(kernel_size={*map(int, self.kernel_size),}, stride={*map(int, self.stride),}, padding={*map(int, self.padding),}, dilation={*map(int, self.dilation),}{self._extra_repr(True)})'
+    def _repr_dict(self) -> OrderedDict:
+        entries = super()._repr_dict()
+        entries['kernel_size'] = tuple(map(int, self.kernel_size))
+        entries['stride'] = tuple(map(int, self.stride))
+        entries['padding'] = tuple(map(int, self.padding))
+        entries['dilation'] = tuple(map(int, self.dilation))
+        return entries
 
     def output_size(self, in_channels: int, in_volume: _size_any_t) -> Tuple[int, _size_any_t]:
         return self._native.output_size(in_channels, in_volume)
@@ -75,7 +81,7 @@ class AvgPool1d(AvgPoolNd):
                  stride: Optional[_int_or_size_1_t]=None,
                  padding: _int_or_size_1_t=0,
                  dilation: _int_or_size_1_t=1,
-                 name: Optional[str]=None) -> None:
+                 *, name: Optional[str]=None) -> None:
         super(AvgPool1d, self).__init__(
             kernel_size=_single(kernel_size),
             stride=_single(stride),
@@ -90,7 +96,7 @@ class AvgPool2d(AvgPoolNd):
                  stride: Optional[_int_or_size_2_t]=None,
                  padding: _int_or_size_2_t=0,
                  dilation: _int_or_size_2_t=1,
-                 name: Optional[str]=None) -> None:
+                 *, name: Optional[str]=None) -> None:
         super(AvgPool2d, self).__init__(
             kernel_size=_pair(kernel_size),
             stride=_pair(stride),
@@ -105,7 +111,7 @@ class AvgPool3d(AvgPoolNd):
                  stride: Optional[_int_or_size_3_t]=None,
                  padding: _int_or_size_3_t=0,
                  dilation: _int_or_size_3_t=0,
-                 name: Optional[str]=None) -> None:
+                 *, name: Optional[str]=None) -> None:
         super(AvgPool3d, self).__init__(
             kernel_size=_triple(kernel_size),
             stride=_triple(stride),
@@ -120,16 +126,21 @@ class SumPoolNd(ConformalModule):
                  stride: Optional[_size_any_t],
                  padding: _size_any_t,
                  dilation: _size_any_t,
-                 name: Optional[str]=None) -> None:
-        super(SumPoolNd, self).__init__(name)
+                 *, name: Optional[str]=None) -> None:
+        super(SumPoolNd, self).__init__(name=name)
         self._native = _WrappedMinkowskiSumPooling(
             kernel_size=kernel_size,
             stride=kernel_size if stride is None else stride,
             padding=padding,
             dilation=dilation)
 
-    def __repr__(self) -> str:
-       return f'{self.__class__.__name__}(kernel_size={*map(int, self.kernel_size),}, stride={*map(int, self.stride),}, padding={*map(int, self.padding),}, dilation={*map(int, self.dilation),}{self._extra_repr(True)})'
+    def _repr_dict(self) -> OrderedDict:
+        entries = super()._repr_dict()
+        entries['kernel_size'] = tuple(map(int, self.kernel_size))
+        entries['stride'] = tuple(map(int, self.stride))
+        entries['padding'] = tuple(map(int, self.padding))
+        entries['dilation'] = tuple(map(int, self.dilation))
+        return entries
 
     def output_size(self, in_channels: int, in_volume: _size_any_t) -> Tuple[int, _size_any_t]:
         return self._native.output_size(in_channels, in_volume)
@@ -157,7 +168,7 @@ class SumPool1d(SumPoolNd):
                  stride: Optional[_int_or_size_1_t]=None,
                  padding: _int_or_size_1_t=0,
                  dilation: _int_or_size_1_t=1,
-                 name: Optional[str]=None) -> None:
+                 *, name: Optional[str]=None) -> None:
         super(SumPool1d, self).__init__(
             kernel_size=_single(kernel_size),
             stride=_single(stride),
@@ -172,7 +183,7 @@ class SumPool2d(SumPoolNd):
                  stride: Optional[_int_or_size_2_t]=None,
                  padding: _int_or_size_2_t=0,
                  dilation: _int_or_size_2_t=1,
-                 name: Optional[str]=None) -> None:
+                 *, name: Optional[str]=None) -> None:
         super(SumPool2d, self).__init__(
             kernel_size=_pair(kernel_size),
             stride=_pair(stride),
@@ -187,7 +198,7 @@ class SumPool3d(SumPoolNd):
                  stride: Optional[_int_or_size_3_t]=None,
                  padding: _int_or_size_3_t=0,
                  dilation: _int_or_size_3_t=1,
-                 name: Optional[str]=None) -> None:
+                 *, name: Optional[str]=None) -> None:
         super(SumPool3d, self).__init__(
             kernel_size=_triple(kernel_size),
             stride=_triple(stride),

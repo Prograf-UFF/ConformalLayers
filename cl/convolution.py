@@ -1,5 +1,6 @@
 from .module import _MinkowskiOperationWrapper, ConformalModule
 from .utils import _int_or_size_1_t, _int_or_size_2_t, _int_or_size_3_t, _size_any_t, _pair, _single, _triple
+from collections import OrderedDict
 from typing import Optional, Tuple
 import MinkowskiEngine as me
 import torch
@@ -73,8 +74,8 @@ class ConvNd(ConformalModule):
                  stride: _size_any_t,
                  padding: _size_any_t,
                  dilation: _size_any_t,
-                 name: Optional[str]=None) -> None:
-        super(ConvNd, self).__init__(name)
+                 *, name: Optional[str]=None) -> None:
+        super(ConvNd, self).__init__(name=name)
         self._native = _WrappedMinkowskiConvolution(
             in_channels=in_channels,
             out_channels=out_channels,
@@ -83,12 +84,19 @@ class ConvNd(ConformalModule):
             padding=padding,
             dilation=dilation)
 
-    def __repr__(self) -> str:
-       return f'{self.__class__.__name__}(in_channels={self.in_channels}, out_channels={self.out_channels}, kernel_size={*map(int, self.kernel_size),}, stride={*map(int, self.stride),}, padding={*map(int, self.padding),}, dilation={*map(int, self.dilation),}{self._extra_repr(True)})'
-
     def _register_parent(self, parent, index: int) -> None:
         parent.register_parameter(f'{self.__class__.__name__}[{index}]' if self._name is None else self._name, self._native.kernel)
         self._native.kernel.register_hook(lambda _: parent.invalidate_cache())
+
+    def _repr_dict(self) -> OrderedDict:
+        entries = super()._repr_dict()
+        entries['in_channels'] = self.in_channels
+        entries['out_channels'] = self.out_channels
+        entries['kernel_size'] = tuple(map(int, self.kernel_size))
+        entries['stride'] = tuple(map(int, self.stride))
+        entries['padding'] = tuple(map(int, self.padding))
+        entries['dilation'] = tuple(map(int, self.dilation))
+        return entries
 
     def output_size(self, in_channels: int, in_volume: _size_any_t) -> Tuple[int, _size_any_t]:
         return self._native.output_size(in_channels, in_volume)
@@ -130,7 +138,7 @@ class Conv1d(ConvNd):
                  stride: _int_or_size_1_t=1,
                  padding: _int_or_size_1_t=0,
                  dilation: _int_or_size_1_t=1,
-                 name: Optional[str]=None) -> None:
+                 *, name: Optional[str]=None) -> None:
         super(Conv1d, self).__init__(
             in_channels=in_channels,
             out_channels=out_channels,
@@ -149,7 +157,7 @@ class Conv2d(ConvNd):
                  stride: _int_or_size_2_t=1,
                  padding: _int_or_size_2_t=0,
                  dilation: _int_or_size_2_t=1,
-                 name: Optional[str]=None) -> None:
+                 *, name: Optional[str]=None) -> None:
         super(Conv2d, self).__init__(
             in_channels=in_channels,
             out_channels=out_channels,
@@ -168,7 +176,7 @@ class Conv3d(ConvNd):
                  stride: _int_or_size_3_t=1,
                  padding: _int_or_size_3_t=0,
                  dilation: _int_or_size_3_t=1,
-                 name: Optional[str]=None) -> None:
+                 *, name: Optional[str]=None) -> None:
         super(Conv3d, self).__init__(
             in_channels=in_channels,
             out_channels=out_channels,
@@ -188,8 +196,8 @@ class ConvTransposeNd(ConformalModule):
                  padding: _size_any_t,
                  output_padding: _size_any_t,
                  dilation: _size_any_t,
-                 name: Optional[str]=None) -> None:
-        super(ConvTransposeNd, self).__init__(name)
+                 *, name: Optional[str]=None) -> None:
+        super(ConvTransposeNd, self).__init__(name=name)
         self._native = _WrappedMinkowskiConvolutionTranspose(
             in_channels=in_channels,
             out_channels=out_channels,
@@ -199,12 +207,20 @@ class ConvTransposeNd(ConformalModule):
             output_padding=output_padding,
             dilation=dilation)
 
-    def __repr__(self) -> str:
-       return f'{self.__class__.__name__}(in_channels={self.in_channels}, out_channels={self.out_channels}, kernel_size={*map(int, self.kernel_size),}, stride={*map(int, self.stride),}, padding={*map(int, self.padding),}, output_padding={*map(int, self.output_padding),}, dilation={*map(int, self.dilation),}{self._extra_repr(True)})'
-
     def _register_parent(self, parent, index: int) -> None:
         parent.register_parameter(f'{self.__class__.__name__}[{index}]' if self._name is None else self._name, self._native.kernel)
         self._native.kernel.register_hook(lambda _: parent.invalidate_cache())
+
+    def _repr_dict(self) -> OrderedDict:
+        entries = super()._repr_dict()
+        entries['in_channels'] = self.in_channels
+        entries['out_channels'] = self.out_channels
+        entries['kernel_size'] = tuple(map(int, self.kernel_size))
+        entries['stride'] = tuple(map(int, self.stride))
+        entries['padding'] = tuple(map(int, self.padding))
+        entries['output_padding'] = tuple(map(int, self.output_padding))
+        entries['dilation'] = tuple(map(int, self.dilation))
+        return entries
 
     def output_size(self, in_channels: int, in_volume: _size_any_t) -> Tuple[int, _size_any_t]:
         return self._native.output_size(in_channels, in_volume)
@@ -251,7 +267,7 @@ class ConvTranspose1d(ConvTransposeNd):
                  padding: _int_or_size_1_t=0,
                  output_padding: _int_or_size_1_t=0,
                  dilation: _int_or_size_1_t=1,
-                 name: Optional[str]=None) -> None:
+                 *, name: Optional[str]=None) -> None:
         super(ConvTranspose1d, self).__init__(
             in_channels=in_channels,
             out_channels=out_channels,
@@ -272,7 +288,7 @@ class ConvTranspose2d(ConvTransposeNd):
                  padding: _int_or_size_2_t=0,
                  output_padding: _int_or_size_2_t=0,
                  dilation: _int_or_size_2_t=1,
-                 name: Optional[str]=None) -> None:
+                 *, name: Optional[str]=None) -> None:
         super(ConvTranspose2d, self).__init__(
             in_channels=in_channels,
             out_channels=out_channels,
@@ -293,7 +309,7 @@ class ConvTranspose3d(ConvTransposeNd):
                  padding: _int_or_size_3_t=0,
                  output_padding: _int_or_size_3_t=0,
                  dilation: _int_or_size_3_t=1,
-                 name: Optional[str]=None) -> None:
+                 *, name: Optional[str]=None) -> None:
         super(ConvTranspose3d, self).__init__(
             in_channels=in_channels,
             out_channels=out_channels,
