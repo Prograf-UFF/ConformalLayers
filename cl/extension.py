@@ -1,7 +1,7 @@
 from .decorator import singleton
 from abc import ABC, abstractmethod
 from collections import OrderedDict
-from typing import Callable, Iterable, Optional, Tuple, Union
+from typing import Callable, Iterable, Optional, Union
 import functools, numpy, re, torch, torch_sparse
 
 assert torch_sparse.__version__ == '0.4.4', 'Proper autograd support in torch_sparse.spspmm() implemented only in version 0.4.4 (see https://github.com/rusty1s/pytorch_sparse/issues/45).'
@@ -345,14 +345,14 @@ def _matmul(lhs: Union[torch.Tensor, CustomTensor], rhs: Union[torch.Tensor, Cus
         elif isinstance(rhs, ZeroTensor):
             return _try_copy(ZeroTensor(out_size(), dtype=lhs.dtype), out)
         elif isinstance(rhs, torch.Tensor):
-            return torch.matmul(lhs.to_native(), rhs, out=out)
+            return torch.matmul(lhs.to_native(), rhs, out=out)  #TODO autograd implementado?
     elif isinstance(lhs, ZeroTensor):
         return _try_copy(ZeroTensor(out_size(), dtype=lhs.dtype), out)
     elif isinstance(lhs, torch.Tensor):
         if isinstance(rhs, IdentityMatrix):
             return _try_copy(lhs, out)
         elif isinstance(rhs, SparseTensor):
-            return torch.matmul(lhs, rhs.to_native(), out=out)
+            return torch.matmul(lhs, rhs.to_native(), out=out) #TODO autograd implementado?
         elif isinstance(rhs, ZeroTensor):
             return _try_copy(ZeroTensor(out_size(), dtype=lhs.dtype), out)
     raise NotImplementedError()
@@ -385,7 +385,7 @@ def _mm(lhs: Union[torch.Tensor, CustomTensor], rhs: Union[torch.Tensor, CustomT
         if isinstance(rhs, IdentityMatrix):
             return lhs
         elif isinstance(rhs, SparseTensor):
-            return torch.matmul(lhs, rhs.to_native())
+            return torch.matmul(lhs, rhs.to_native()) #TODO autograd implementado?
         elif isinstance(rhs, ZeroTensor):
             return ZeroTensor((lhs.shape[0], rhs.shape[1]), dtype=lhs.dtype)
     raise NotImplementedError()
@@ -396,7 +396,7 @@ def _try_copy(src: Union[torch.Tensor, CustomTensor], dst: Union[torch.Tensor, C
         return src
     if isinstance(src, CustomTensor):
         if isinstance(dst, CustomTensor):
-            return dts.copy_(src)
+            return dst.copy_(src)
         elif isinstance(dst, torch.Tensor):
             return dst.copy_(src.to_native())
     elif isinstance(src, torch.Tensor):

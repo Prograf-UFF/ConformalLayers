@@ -11,17 +11,16 @@ import math, numpy, torch
 class BaseActivation(ConformalModule):
     def __init__(self,
                  *, name: Optional[str]=None) -> None:
-        super(BaseActivation, self).__init__(name=name)
+        super(BaseActivation, self).__init__(None, name=name)
 
     @abstractmethod
     def to_tensor(self, previous: SparseTensor) -> Tuple[Union[SparseTensor, IdentityMatrix], Union[SparseTensor, ZeroTensor]]:
         pass
 
 
-@singleton
 class NoActivation(BaseActivation):
-    def output_size(self, in_channels: int, in_volume: _size_any_t) -> Tuple[int, _size_any_t]:
-        return in_channels, in_volume
+    def __init__(self) -> None:
+        super(NoActivation, self).__init__()
 
     def to_tensor(self, previous: SparseTensor) -> Tuple[IdentityMatrix, ZeroTensor]:
         nrows, _ = previous.shape

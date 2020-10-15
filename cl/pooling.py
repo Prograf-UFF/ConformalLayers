@@ -1,4 +1,4 @@
-from .module import _MinkowskiOperationWrapper, ConformalModule
+from .module import MinkowskiOperationWrapper, ConformalModule
 from .utils import _int_or_size_1_t, _int_or_size_2_t, _int_or_size_3_t, _size_any_t, _pair, _single, _triple
 from collections import OrderedDict
 from typing import Optional, Tuple
@@ -6,9 +6,9 @@ import MinkowskiEngine as me
 import torch
 
 
-class _WrappedMinkowskiAvgPooling(_MinkowskiOperationWrapper):
+class WrappedMinkowskiAvgPooling(MinkowskiOperationWrapper):
     def __init__(self, **kwargs) -> None:
-        super(_WrappedMinkowskiAvgPooling, self).__init__(transposed=False, **kwargs)
+        super(WrappedMinkowskiAvgPooling, self).__init__(transposed=False, **kwargs)
         self._inv_cardinality = 1 / int(torch.prod(self.kernel_size))
         self._function = me.MinkowskiAvgPoolingFunction()
 
@@ -21,9 +21,9 @@ class _WrappedMinkowskiAvgPooling(_MinkowskiOperationWrapper):
         return in_channels, tuple(map(int, (torch.as_tensor(in_volume, dtype=torch.int32) + 2 * self.padding - self.dilation * (self.kernel_size - 1) - 1) // self.stride + 1))
 
 
-class _WrappedMinkowskiSumPooling(_MinkowskiOperationWrapper):
+class WrappedMinkowskiSumPooling(MinkowskiOperationWrapper):
     def __init__(self, **kwargs) -> None:
-        super(_WrappedMinkowskiSumPooling, self).__init__(transposed=False, **kwargs)
+        super(WrappedMinkowskiSumPooling, self).__init__(transposed=False, **kwargs)
         self._function = me.MinkowskiAvgPoolingFunction()
 
     def _apply_function(self, input: me.SparseTensor, region_type: me.RegionType, region_offset: torch.IntTensor, out_coords_key: me.CoordsKey) -> torch.Tensor:
@@ -40,12 +40,13 @@ class AvgPoolNd(ConformalModule):
                  padding: _size_any_t,
                  dilation: _size_any_t,
                  *, name: Optional[str]=None) -> None:
-        super(AvgPoolNd, self).__init__(name=name)
-        self._native = _WrappedMinkowskiAvgPooling(
-            kernel_size=kernel_size,
-            stride=kernel_size if stride is None else stride,
-            padding=padding,
-            dilation=dilation)
+        super(AvgPoolNd, self).__init__(
+            WrappedMinkowskiAvgPooling(
+                kernel_size=kernel_size,
+                stride=kernel_size if stride is None else stride,
+                padding=padding,
+                dilation=dilation),
+            name=name)
 
     def _repr_dict(self) -> OrderedDict:
         entries = super()._repr_dict()
@@ -55,24 +56,21 @@ class AvgPoolNd(ConformalModule):
         entries['dilation'] = tuple(map(int, self.dilation))
         return entries
 
-    def output_size(self, in_channels: int, in_volume: _size_any_t) -> Tuple[int, _size_any_t]:
-        return self._native.output_size(in_channels, in_volume)
-
     @property
     def kernel_size(self) -> torch.IntTensor:
-        return self._native.kernel_size
+        return self.native.kernel_size
 
     @property
     def stride(self) -> torch.IntTensor:
-        return self._native.stride
+        return self.native.stride
 
     @property
     def padding(self) -> torch.IntTensor:
-        return self._native.padding
+        return self.native.padding
 
     @property
     def dilation(self) -> torch.IntTensor:
-        return self._native.dilation
+        return self.native.dilation
 
 
 class AvgPool1d(AvgPoolNd):
@@ -127,12 +125,13 @@ class SumPoolNd(ConformalModule):
                  padding: _size_any_t,
                  dilation: _size_any_t,
                  *, name: Optional[str]=None) -> None:
-        super(SumPoolNd, self).__init__(name=name)
-        self._native = _WrappedMinkowskiSumPooling(
-            kernel_size=kernel_size,
-            stride=kernel_size if stride is None else stride,
-            padding=padding,
-            dilation=dilation)
+        super(SumPoolNd, self).__init__(
+            WrappedMinkowskiSumPooling(
+                kernel_size=kernel_size,
+                stride=kernel_size if stride is None else stride,
+                padding=padding,
+                dilation=dilation),
+            name=name)
 
     def _repr_dict(self) -> OrderedDict:
         entries = super()._repr_dict()
@@ -142,24 +141,21 @@ class SumPoolNd(ConformalModule):
         entries['dilation'] = tuple(map(int, self.dilation))
         return entries
 
-    def output_size(self, in_channels: int, in_volume: _size_any_t) -> Tuple[int, _size_any_t]:
-        return self._native.output_size(in_channels, in_volume)
-
     @property
     def kernel_size(self) -> torch.IntTensor:
-        return self._native.kernel_size
+        return self.native.kernel_size
 
     @property
     def stride(self) -> torch.IntTensor:
-        return self._native.stride
+        return self.native.stride
 
     @property
     def padding(self) -> torch.IntTensor:
-        return self._native.padding
+        return self.native.padding
 
     @property
     def dilation(self) -> torch.IntTensor:
-        return self._native.dilation
+        return self.native.dilation
 
 
 class SumPool1d(SumPoolNd):

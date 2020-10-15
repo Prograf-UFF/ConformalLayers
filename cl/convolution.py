@@ -1,4 +1,4 @@
-from .module import _MinkowskiOperationWrapper, ConformalModule
+from .module import MinkowskiOperationWrapper, ConformalModule
 from .utils import _int_or_size_1_t, _int_or_size_2_t, _int_or_size_3_t, _size_any_t, _pair, _single, _triple
 from collections import OrderedDict
 from typing import Optional, Tuple
@@ -6,9 +6,9 @@ import MinkowskiEngine as me
 import torch
 
 
-class _WrappedMinkowskiConvolution(_MinkowskiOperationWrapper):
+class WrappedMinkowskiConvolution(MinkowskiOperationWrapper):
     def __init__(self, in_channels: int, out_channels: int, **kwargs) -> None:
-        super(_WrappedMinkowskiConvolution, self).__init__(transposed=False, **kwargs)
+        super(WrappedMinkowskiConvolution, self).__init__(transposed=False, **kwargs)
         self._in_channels = in_channels
         self._out_channels = out_channels
         self._kernel = torch.nn.Parameter(torch.FloatTensor(self.kernel_generator.kernel_volume, in_channels, out_channels))
@@ -33,9 +33,9 @@ class _WrappedMinkowskiConvolution(_MinkowskiOperationWrapper):
         return self._kernel
 
 
-class _WrappedMinkowskiConvolutionTranspose(_MinkowskiOperationWrapper):
+class WrappedMinkowskiConvolutionTranspose(MinkowskiOperationWrapper):
     def __init__(self, in_channels: int, out_channels: int, output_padding: _size_any_t, **kwargs) -> None:
-        super(_WrappedMinkowskiConvolutionTranspose, self).__init__(transposed=True, **kwargs)
+        super(WrappedMinkowskiConvolutionTranspose, self).__init__(transposed=True, **kwargs)
         self._in_channels = in_channels
         self._out_channels = out_channels
         self._output_padding = torch.as_tensor(output_padding, dtype=torch.int32)
@@ -75,18 +75,19 @@ class ConvNd(ConformalModule):
                  padding: _size_any_t,
                  dilation: _size_any_t,
                  *, name: Optional[str]=None) -> None:
-        super(ConvNd, self).__init__(name=name)
-        self._native = _WrappedMinkowskiConvolution(
-            in_channels=in_channels,
-            out_channels=out_channels,
-            kernel_size=kernel_size,
-            stride=stride,
-            padding=padding,
-            dilation=dilation)
+        super(ConvNd, self).__init__(
+            WrappedMinkowskiConvolution(
+                in_channels=in_channels,
+                out_channels=out_channels,
+                kernel_size=kernel_size,
+                stride=stride,
+                padding=padding,
+                dilation=dilation),
+            name=name)
 
     def _register_parent(self, parent, index: int) -> None:
-        parent.register_parameter(f'{self.__class__.__name__}[{index}]' if self._name is None else self._name, self._native.kernel)
-        self._native.kernel.register_hook(lambda _: parent.invalidate_cache())
+        parent.register_parameter(f'{self.__class__.__name__}[{index}]' if self._name is None else self._name, self.native.kernel)
+        self.native.kernel.register_hook(lambda _: parent.invalidate_cache())
 
     def _repr_dict(self) -> OrderedDict:
         entries = super()._repr_dict()
@@ -98,36 +99,33 @@ class ConvNd(ConformalModule):
         entries['dilation'] = tuple(map(int, self.dilation))
         return entries
 
-    def output_size(self, in_channels: int, in_volume: _size_any_t) -> Tuple[int, _size_any_t]:
-        return self._native.output_size(in_channels, in_volume)
-
     @property
     def in_channels(self) -> int:
-        return self._native.in_channels
+        return self.native.in_channels
 
     @property
     def out_channels(self) -> int:
-        return self._native.out_channels
+        return self.native.out_channels
 
     @property
     def kernel_size(self) -> torch.IntTensor:
-        return self._native.kernel_size
+        return self.native.kernel_size
 
     @property
     def stride(self) -> torch.IntTensor:
-        return self._native.stride
+        return self.native.stride
 
     @property
     def padding(self) -> torch.IntTensor:
-        return self._native.padding
+        return self.native.padding
 
     @property
     def dilation(self) -> torch.IntTensor:
-        return self._native.dilation
+        return self.native.dilation
 
     @property
     def kernel(self) -> torch.nn.Parameter:
-        return self._native.kernel
+        return self.native.kernel
 
 
 class Conv1d(ConvNd):
@@ -197,19 +195,20 @@ class ConvTransposeNd(ConformalModule):
                  output_padding: _size_any_t,
                  dilation: _size_any_t,
                  *, name: Optional[str]=None) -> None:
-        super(ConvTransposeNd, self).__init__(name=name)
-        self._native = _WrappedMinkowskiConvolutionTranspose(
-            in_channels=in_channels,
-            out_channels=out_channels,
-            kernel_size=kernel_size,
-            stride=stride,
-            padding=padding,
-            output_padding=output_padding,
-            dilation=dilation)
+        super(ConvTransposeNd, self).__init__(
+            WrappedMinkowskiConvolutionTranspose(
+                in_channels=in_channels,
+                out_channels=out_channels,
+                kernel_size=kernel_size,
+                stride=stride,
+                padding=padding,
+                output_padding=output_padding,
+                dilation=dilation),
+            name=name)
 
     def _register_parent(self, parent, index: int) -> None:
-        parent.register_parameter(f'{self.__class__.__name__}[{index}]' if self._name is None else self._name, self._native.kernel)
-        self._native.kernel.register_hook(lambda _: parent.invalidate_cache())
+        parent.register_parameter(f'{self.__class__.__name__}[{index}]' if self._name is None else self._name, self.native.kernel)
+        self.native.kernel.register_hook(lambda _: parent.invalidate_cache())
 
     def _repr_dict(self) -> OrderedDict:
         entries = super()._repr_dict()
@@ -222,40 +221,37 @@ class ConvTransposeNd(ConformalModule):
         entries['dilation'] = tuple(map(int, self.dilation))
         return entries
 
-    def output_size(self, in_channels: int, in_volume: _size_any_t) -> Tuple[int, _size_any_t]:
-        return self._native.output_size(in_channels, in_volume)
-
     @property
     def in_channels(self) -> int:
-        return self._native.in_channels
+        return self.native.in_channels
 
     @property
     def out_channels(self) -> int:
-        return self._native.out_channels
+        return self.native.out_channels
 
     @property
     def kernel_size(self) -> torch.IntTensor:
-        return self._native.kernel_size
+        return self.native.kernel_size
 
     @property
     def stride(self) -> torch.IntTensor:
-        return self._native.stride
+        return self.native.stride
 
     @property
     def padding(self) -> torch.IntTensor:
-        return self._native.padding
+        return self.native.padding
 
     @property
     def output_padding(self) -> torch.IntTensor:
-        return self._native.output_padding
+        return self.native.output_padding
 
     @property
     def dilation(self) -> torch.IntTensor:
-        return self._native.dilation
+        return self.native.dilation
 
     @property
     def kernel(self) -> torch.nn.Parameter:
-        return self._native.kernel
+        return self.native.kernel
 
 
 class ConvTranspose1d(ConvTransposeNd):

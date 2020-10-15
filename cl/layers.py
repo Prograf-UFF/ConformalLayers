@@ -13,10 +13,10 @@ _cached_signature_t = Tuple[Tuple[int, _size_any_t], Tuple[int, _size_any_t], to
 
 
 @singleton
-class _EyeFactory(object):
+class EyeFactory(object):
     _Lock = threading.Lock()
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._cache = dict()
 
     @sync(_Lock)
@@ -40,7 +40,7 @@ class _EyeFactory(object):
         return eye
 
 
-EYE_FACTORY = _EyeFactory()
+EYE_FACTORY = EyeFactory()
 
 
 class ConformalLayers(torch.nn.Module):
@@ -56,11 +56,11 @@ class ConformalLayers(torch.nn.Module):
         self._activations: List[BaseActivation] = list()
         for ind, curr in enumerate(self._modules):
             if isinstance(curr, BaseActivation):
-                self._sequentials.append(torch.nn.Sequential(*map(lambda module: module._native, self._modules[start:ind])))
+                self._sequentials.append(torch.nn.Sequential(*map(lambda module: module.native, self._modules[start:ind])))
                 self._activations.append(curr)
                 start = ind + 1
         if start != len(self._modules):
-            self._sequentials.append(torch.nn.Sequential(*map(lambda module: module._native, self._modules[start:])))
+            self._sequentials.append(torch.nn.Sequential(*map(lambda module: module.native, self._modules[start:])))
             self._activations.append(NoActivation())
         # Initialize cached data with null values
         self._valid_cache = False

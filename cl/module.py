@@ -5,15 +5,23 @@ from typing import Optional, Tuple
 import MinkowskiEngine as me
 import torch
 
+class NativeModuleWrapper(torch.nn.Module):
+    def __init__(self) -> None:
+        super(NativeModuleWrapper, self).__init__()
 
-class _MinkowskiOperationWrapper(torch.nn.Module):
+    @abstractmethod
+    def output_size(self, in_size: _size_any_t) -> _size_any_t:
+        pass
+
+
+class MinkowskiOperationWrapper(NativeModuleWrapper):
     def __init__(self,
                  kernel_size: _size_any_t,
                  stride: _size_any_t,
                  padding: _size_any_t,
                  dilation: _size_any_t,
                  transposed: bool) -> None:
-        super(_MinkowskiOperationWrapper, self).__init__()
+        super(MinkowskiOperationWrapper, self).__init__()
         # Declare basic properties
         self._kernel_size = torch.as_tensor(kernel_size, dtype=torch.int32)
         self._stride = torch.as_tensor(stride, dtype=torch.int32)
@@ -61,10 +69,6 @@ class _MinkowskiOperationWrapper(torch.nn.Module):
         else:
             return me.SparseTensor(out_feats, coords_key=out_coords_key, coords_manager=input.coords_man)
 
-    @abstractmethod
-    def output_size(self, in_channels: int, in_volume: _size_any_t) -> Tuple[int, _size_any_t]:
-        pass
-
     @property
     def kernel_size(self) -> torch.IntTensor:
         return self._kernel_size
@@ -91,8 +95,11 @@ class _MinkowskiOperationWrapper(torch.nn.Module):
 
 
 class ConformalModule(ABC):
-    def __init__(self, *, name: Optional[str]=None) -> None:
+    def __init__(self,
+                 native: NativeModuleWrapper,
+                 *, name: Optional[str]=None) -> None:
         super(ConformalModule, self).__init__()
+        self._native = native
         self._name = name
 
     def __repr__(self) -> str:
@@ -107,10 +114,13 @@ class ConformalModule(ABC):
     def _register_parent(self, parent, index: int) -> None:
         pass
 
-    @abstractmethod
     def output_size(self, in_channels: int, in_volume: _size_any_t) -> Tuple[int, _size_any_t]:
-        pass
+        return self.native.output_size(in_channels, in_volume)
     
     @property
     def name(self) -> Optional[str]:
         return self._name
+
+    @property
+    def native(self) -> NativeModuleWrapper:
+        return self._native
