@@ -47,7 +47,7 @@ class MinkowskiOperationWrapper(NativeModuleWrapper):
         # Compute the complete set of coordinates for evaluating the module
         index_start = self._index_start_offset
         index_end = in_coords[:, 1:].max(0)[0] + self._index_end_offset #TODO Esse max pode ser reaproveitado dos max por batch?
-        out_coords = torch.cat(tuple(torch.stack(torch.meshgrid(torch.as_tensor((batch,), dtype=torch.int32, device=input.device), *map(lambda start, end, step: torch.arange(int(start), int(end), int(step), dtype=torch.int32, device=input.device),
+        out_coords = torch.cat(tuple(torch.stack(torch.meshgrid(torch.as_tensor((batch,), dtype=torch.int32), *map(lambda start, end, step: torch.arange(int(start), int(end), int(step), dtype=torch.int32),
             torch.max(index_start, ((indices.min(0)[0] + self._kernel_start_offset - index_start) // self.stride) * self.stride + index_start),
             torch.min(index_end, ((indices.max(0)[0] + self._kernel_end_offset - index_start) // self.stride + 1) * self.stride + index_start),
             self.stride)), dim=-1).view(-1, 1 + input.dimension) for batch, indices in enumerate(indices_per_batch)), dim=0)
