@@ -86,8 +86,11 @@ class ConvNd(ConformalModule):
             name=name)
 
     def _register_parent(self, parent, index: int) -> None:
-        parent.register_parameter(f'{self.__class__.__name__}[{index}]' if self._name is None else self._name, self.native.kernel)
-        self.native.kernel.register_hook(lambda _: parent.invalidate_cache())
+        parent._parameterz.append(self.native.kernel)
+        def hook(grad):
+            parent.invalidate_cache()
+            return grad
+        self.native.kernel.register_hook(hook)
 
     def _repr_dict(self) -> OrderedDict:
         entries = super()._repr_dict()
@@ -207,8 +210,11 @@ class ConvTransposeNd(ConformalModule):
             name=name)
 
     def _register_parent(self, parent, index: int) -> None:
-        parent.register_parameter(f'{self.__class__.__name__}[{index}]' if self._name is None else self._name, self.native.kernel)
-        self.native.kernel.register_hook(lambda _: parent.invalidate_cache())
+        parent._parameterz.append(self.native.kernel)
+        def hook(grad):
+            parent.invalidate_cache()
+            return grad
+        self.native.kernel.register_hook(hook)
 
     def _repr_dict(self) -> OrderedDict:
         entries = super()._repr_dict()

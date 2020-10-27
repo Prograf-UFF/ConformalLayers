@@ -24,7 +24,7 @@ class NoActivation(BaseActivation):
 
     def to_tensor(self, previous: SparseTensor) -> Tuple[IdentityMatrix, ZeroTensor]:
         nrows, _ = previous.shape
-        return IdentityMatrix(nrows, dtype=previous.dtype), ZeroTensor((nrows, nrows, nrows), dtype=previous.dtype)
+        return IdentityMatrix(nrows, dtype=previous.dtype, device=previous.device), ZeroTensor((nrows, nrows, nrows), dtype=previous.dtype, device=previous.device)
 
 
 class SRePro(BaseActivation):
@@ -50,9 +50,9 @@ class SRePro(BaseActivation):
             symmetric = torch.mm(previous, previous.t())
             alpha = torch.sqrt(math.sqrt(symmetric.nnz) * symmetric.values[:-1, ...].abs().max(0, keepdim=True)[0]) # We use symmetric.values[:-1, ...] to skeep the homogeneous coordinate (it is always 1 and does not affect the transformed vector).
         else:
-            alpha = torch.as_tensor((self.alpha,), dtype=previous.dtype)
+            alpha = torch.as_tensor((self.alpha,), dtype=previous.dtype, device=previous.device)
         # Compute the non-constant coefficient of the matrix
-        matrix_values = torch.ones((nrows,), dtype=previous.dtype)
+        matrix_values = torch.ones((nrows,), dtype=previous.dtype, device=previous.device)
         matrix_values[-1] = 0.5 * alpha
         matrix = SparseTensor((ind, ind), matrix_values, (nrows, nrows), coalesced=True)
         # Make rank-3 tensor

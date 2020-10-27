@@ -16,6 +16,7 @@ _cached_signature_t = Tuple[Tuple[int, _size_any_t], Tuple[int, _size_any_t], to
 class EyeFactory(object):
     _Lock = threading.Lock()
 
+    @sync(_Lock)
     def __init__(self) -> None:
         self._cache = dict()
 
@@ -24,15 +25,15 @@ class EyeFactory(object):
         self._cache.clear()
 
     @sync(_Lock)
-    def get(self, in_channels: int, in_volume: _size_any_t) -> me.SparseTensor:
-        key = (in_channels, in_volume)
+    def get(self, in_channels: int, in_volume: _size_any_t, device: torch.device) -> me.SparseTensor:
+        key = (in_channels, in_volume, device)
         eye = self._cache.get(key)
         if eye is None:
             in_entries = numpy.prod(in_volume)
             in_numel = in_channels * in_entries
-            coords = torch.stack(torch.meshgrid(*map(lambda end: torch.arange(int(end), dtype=torch.int32), (in_channels, *in_volume))), dim=-1).view(-1, 1 + len(in_volume))
-            coords[:, 0] = torch.arange(len(coords), dtype=torch.int32)
-            feats = torch.zeros(in_numel, in_channels)
+            coords = torch.stack(torch.meshgrid(*map(lambda end: torch.arange(int(end), dtype=torch.int32, device=device), (in_channels, *in_volume))), dim=-1).view(-1, 1 + len(in_volume))
+            coords[:, 0] = torch.arange(len(coords), dtype=torch.int32, device=device)
+            feats = torch.zeros(in_numel, in_channels, device=device)
             for channel in range(in_channels):
                 feats[channel*in_entries:(channel+1)*in_entries, channel] = 1
             eye = me.SparseTensor(feats, coords)
@@ -47,20 +48,21 @@ class ConformalLayers(torch.nn.Module):
     def __init__(self, *args: ConformalModule) -> None:
         super(ConformalLayers, self).__init__()
         # Keep conformal modules as is and track parameter's updates
-        self._modules: List[ConformalModule] = [*args]
-        for index, curr in enumerate(self._modules):
+        self._modulez: List[ConformalModule] = [*args]
+        self._parameterz = torch.nn.ParameterList()
+        for index, curr in enumerate(self._modulez):
             curr._register_parent(self, index)
         # Break the sequence of operations into Conformal Layers
         start = 0
         self._sequentials: List[torch.nn.Sequential] = list()
         self._activations: List[BaseActivation] = list()
-        for ind, curr in enumerate(self._modules):
+        for ind, curr in enumerate(self._modulez):
             if isinstance(curr, BaseActivation):
-                self._sequentials.append(torch.nn.Sequential(*map(lambda module: module.native, self._modules[start:ind])))
+                self._sequentials.append(torch.nn.Sequential(*map(lambda module: module.native, self._modulez[start:ind])))
                 self._activations.append(curr)
                 start = ind + 1
-        if start != len(self._modules):
-            self._sequentials.append(torch.nn.Sequential(*map(lambda module: module.native, self._modules[start:])))
+        if start != len(self._modulez):
+            self._sequentials.append(torch.nn.Sequential(*map(lambda module: module.native, self._modulez[start:])))
             self._activations.append(NoActivation())
         # Initialize cached data with null values
         self._valid_cache = False
@@ -69,26 +71,26 @@ class ConformalLayers(torch.nn.Module):
         self._cached_flat_tensor: Union[SparseTensor, ZeroTensor] = None
 
     def __getitem__(self, index: int) -> ConformalModule:
-        return self._modules[index]
+        return self._modulez[index]
 
     def __iter__(self) -> Iterator[ConformalModule]:
-        return iter(self._modules)
+        return iter(self._modulez)
     
     def __len__(self) -> int:
-        return len(self._modules)
+        return len(self._modulez)
 
     def __repr__(self) -> str:
-        if len(self._modules) != 0:
-            modules_str = ',\n    '.join(map(lambda pair: f'{pair[0]}: {pair[1]}', enumerate(self._modules)))
+        if len(self._modulez) != 0:
+            modules_str = ',\n    '.join(map(lambda pair: f'{pair[0]}: {pair[1]}', enumerate(self._modulez)))
             return f'{self.__class__.__name__}(\n    {modules_str})'
         return f'{self.__class__.__name__}( ¯\_(ツ)_/¯ )'
 
-    def _compute_torch_module_matrix(self, in_channels: int, in_volume: _size_any_t, out_channels: int, out_volume: _size_any_t, module: torch.nn.Module) -> SparseTensor:
+    def _compute_torch_module_matrix(self, in_channels: int, in_volume: _size_any_t, out_channels: int, out_volume: _size_any_t, module: torch.nn.Module, device: torch.device) -> SparseTensor:
         in_numel = in_channels * numpy.prod(in_volume)
         out_numel = out_channels * numpy.prod(out_volume)
-        tensor = module(EYE_FACTORY.get(in_channels, in_volume))
+        tensor = module(EYE_FACTORY.get(in_channels, in_volume, device))
         coords = tensor.coords.view(-1, 1 + len(out_volume), 1).expand(-1, -1, out_channels).permute(0, 2, 1)
-        coords = torch.cat((coords, torch.empty((len(coords), out_channels, 1), dtype=torch.int32)), 2)
+        coords = torch.cat((coords, torch.empty((len(coords), out_channels, 1), dtype=torch.int32, device=coords.device)), 2)
         for channel in range(out_channels):
             coords[:, channel, -1] = channel
         coords = coords.view(-1, len(out_volume) + 2)
@@ -96,7 +98,7 @@ class ConformalLayers(torch.nn.Module):
         row = numpy.concatenate((row, (in_numel,))) #TODO Cópia de memória na concatenação
         col = numpy.concatenate((col, (out_numel,))) #TODO Cópia de memória na concatenação
         values = tensor.feats.view(-1)
-        values = torch.cat((values, torch.as_tensor((1,), dtype=values.dtype))) #TODO Cópia de memória na concatenação
+        values = torch.cat((values, torch.as_tensor((1,), dtype=values.dtype, device=values.device))) #TODO Cópia de memória na concatenação
         return SparseTensor((col, row), values, (out_numel + 1, in_numel + 1), coalesced=False)
 
     def _poor_mans_tensordots(self, activation_tensor: Union[SparseTensor, ZeroTensor], backward_prod_matrix: Union[SparseTensor, IdentityMatrix], forward_prod_sequential_matrix: SparseTensor) -> Union[SparseTensor, ZeroTensor]:
@@ -109,7 +111,7 @@ class ConformalLayers(torch.nn.Module):
         (s1, s2), (_, s3) = B.shape, C.shape
         # Check for trivial solution...
         if isinstance(A, ZeroTensor):
-            return ZeroTensor((s1 * s3, s3), A.dtype)
+            return ZeroTensor((s1 * s3, s3), A.dtype, A.device)
         # ... otherwise, do it the hard way
         # Step 1: temp1 = FlattenLeft[Transpose[A, 1 <-> 2]]
         indices1 = numpy.unravel_index(numpy.ravel_multi_index((A.indices[0], A.indices[2], A.indices[1]), (s2, s2, s2)), (s2 * s2, s2))
@@ -128,7 +130,7 @@ class ConformalLayers(torch.nn.Module):
         # Step 6: flat_output = MatMul(temp5, C)
         return torch.mm(temp5, C)
 
-    def _update_cache(self, in_channels: int, in_volume: _size_any_t, dtype: torch.dtype) -> _cached_signature_t:
+    def _update_cache(self, in_channels: int, in_volume: _size_any_t, dtype: torch.dtype, device: torch.device) -> _cached_signature_t:
         in_signature = (in_channels, in_volume)
         if not self._valid_cache or self._cached_signature[0] != in_signature:
             in_numel = in_channels * numpy.prod(in_volume)
@@ -141,7 +143,7 @@ class ConformalLayers(torch.nn.Module):
                     for module in sequential:
                         out_channels, out_volume = module.output_size(out_channels, out_volume)
                     # Make tensor representations of the operations in the current layer
-                    sequential_matrix = self._compute_torch_module_matrix(in_channels, in_volume, out_channels, out_volume, sequential)
+                    sequential_matrix = self._compute_torch_module_matrix(in_channels, in_volume, out_channels, out_volume, sequential, device)
                     activation_matrix, activation_tensor = activation.to_tensor(sequential_matrix)
                     tensors[layer] = (sequential_matrix, activation_matrix, activation_tensor)
                     # Get ready for the next layer
@@ -149,7 +151,7 @@ class ConformalLayers(torch.nn.Module):
                 out_numel = out_channels * numpy.prod(out_volume)
                 # Compute the backward cummulative product of sequential matrices and activation matrices
                 backward_prod_matrices = [None] * self.nlayers
-                backward_prod_matrix = IdentityMatrix(out_numel + 1, dtype=dtype)
+                backward_prod_matrix = IdentityMatrix(out_numel + 1, dtype=dtype, device=device)
                 backward_prod_matrices[self.nlayers - 1] = backward_prod_matrix
                 for layer, (sequential_matrix, activation_matrix, _) in zip(range(self.nlayers - 2, -1, -1), tensors[-1:-self.nlayers:-1]):
                     backward_prod_matrix = torch.mm(backward_prod_matrix, torch.mm(activation_matrix, sequential_matrix))
@@ -158,14 +160,14 @@ class ConformalLayers(torch.nn.Module):
                 sequential_matrix, activation_matrix, _ = tensors[0]
                 cached_matrix = torch.mm(backward_prod_matrix, torch.mm(activation_matrix, sequential_matrix))
                 # Compute the final tensor encoding the Conformal Layers
-                cached_flat_tensor = ZeroTensor(((out_numel + 1) * (in_numel + 1), in_numel + 1), dtype=dtype)
-                forward_prod_sequential_matrix = IdentityMatrix(in_numel + 1, dtype=dtype)
+                cached_flat_tensor = ZeroTensor(((out_numel + 1) * (in_numel + 1), in_numel + 1), dtype=dtype, device=device)
+                forward_prod_sequential_matrix = IdentityMatrix(in_numel + 1, dtype=dtype, device=device)
                 for backward_prod_matrix, (sequential_matrix, _, activation_tensor) in zip(backward_prod_matrices, tensors):
                     forward_prod_sequential_matrix = torch.mm(sequential_matrix, forward_prod_sequential_matrix)
                     cached_flat_tensor = torch.add(cached_flat_tensor, self._poor_mans_tensordots(activation_tensor, backward_prod_matrix, forward_prod_sequential_matrix))
             else:
-                cached_matrix = IdentityMatrix(in_numel + 1, dtype=dtype)
-                cached_flat_tensor = ZeroTensor(((in_numel + 1) * (in_numel + 1), in_numel + 1), dtype=dtype)
+                cached_matrix = IdentityMatrix(in_numel + 1, dtype=dtype, device=device)
+                cached_flat_tensor = ZeroTensor(((in_numel + 1) * (in_numel + 1), in_numel + 1), dtype=dtype, device=device)
             self._cached_matrix = cached_matrix
             self._cached_flat_tensor = cached_flat_tensor
             # Set cached data as valid
@@ -176,7 +178,7 @@ class ConformalLayers(torch.nn.Module):
     def forward(self, input: torch.Tensor):
         batches, in_channels, *in_volume = input.shape
         # If necessary, update cached data
-        _, (out_channels, out_volume), _ = self._update_cache(in_channels, tuple(in_volume), input.dtype)
+        _, (out_channels, out_volume), _ = self._update_cache(in_channels, tuple(in_volume), input.dtype, input.device)
         # Reshape the input as a matrix where each batch entry corresponds to a column 
         input_as_matrix = input.view(batches, -1).t()
         input_as_matrix = torch.cat((input_as_matrix, input_as_matrix.norm(dim=0, keepdim=True)), dim=0) #TODO É possível eviar a cópia de memória?
