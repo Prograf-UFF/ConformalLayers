@@ -1,4 +1,4 @@
-from .utils import _size_any_t
+from .utils import SizeAny
 from abc import ABC, abstractmethod
 from collections import OrderedDict
 from typing import Optional, Tuple
@@ -10,16 +10,16 @@ class NativeModuleWrapper(torch.nn.Module):
         super(NativeModuleWrapper, self).__init__()
 
     @abstractmethod
-    def output_size(self, in_size: _size_any_t) -> _size_any_t:
+    def output_size(self, in_size: SizeAny) -> SizeAny:
         pass
 
 
 class MinkowskiOperationWrapper(NativeModuleWrapper):
     def __init__(self,
-                 kernel_size: _size_any_t,
-                 stride: _size_any_t,
-                 padding: _size_any_t,
-                 dilation: _size_any_t,
+                 kernel_size: SizeAny,
+                 stride: SizeAny,
+                 padding: SizeAny,
+                 dilation: SizeAny,
                  transposed: bool) -> None:
         super(MinkowskiOperationWrapper, self).__init__()
         # Declare basic properties
@@ -114,7 +114,7 @@ class ConformalModule(ABC):
     def _register_parent(self, parent, index: int) -> None:
         pass
 
-    def output_size(self, in_channels: int, in_volume: _size_any_t) -> Tuple[int, _size_any_t]:
+    def output_size(self, in_channels: int, in_volume: SizeAny) -> Tuple[int, SizeAny]:
         return self.native.output_size(in_channels, in_volume)
     
     @property

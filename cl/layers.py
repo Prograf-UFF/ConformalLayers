@@ -2,14 +2,14 @@ from .activation import BaseActivation, NoActivation, SRePro
 from .decorator import sync, singleton
 from .extension import IdentityMatrix, SparseTensor, ZeroTensor
 from .module import ConformalModule
-from .utils import _size_any_t
+from .utils import SizeAny, ravel_multi_index, unravel_index
 from collections import OrderedDict
 from typing import Iterator, List, Tuple, Union
 import MinkowskiEngine as me
 import numpy, operator, threading, torch
 
 
-_cached_signature_t = Tuple[Tuple[int, _size_any_t], Tuple[int, _size_any_t], torch.dtype]  # Format: ((in_channels, in_volume), (out_channels, out_volume), dtype)
+_cached_signature_t = Tuple[Tuple[int, SizeAny], Tuple[int, SizeAny], torch.dtype]  # Format: ((in_channels, in_volume), (out_channels, out_volume), dtype)
 
 
 @singleton
@@ -25,7 +25,7 @@ class EyeFactory(object):
         self._cache.clear()
 
     @sync(_Lock)
-    def get(self, in_channels: int, in_volume: _size_any_t, device: torch.device) -> me.SparseTensor:
+    def get(self, in_channels: int, in_volume: SizeAny, device: torch.device) -> me.SparseTensor:
         key = (in_channels, in_volume, device)
         eye = self._cache.get(key)
         if eye is None:
@@ -85,7 +85,7 @@ class ConformalLayers(torch.nn.Module):
             return f'{self.__class__.__name__}(\n    {modules_str})'
         return f'{self.__class__.__name__}( ¯\_(ツ)_/¯ )'
 
-    def _compute_torch_module_matrix(self, in_channels: int, in_volume: _size_any_t, out_channels: int, out_volume: _size_any_t, module: torch.nn.Module, device: torch.device) -> SparseTensor:
+    def _compute_torch_module_matrix(self, in_channels: int, in_volume: SizeAny, out_channels: int, out_volume: SizeAny, module: torch.nn.Module, device: torch.device) -> SparseTensor:
         in_numel = in_channels * numpy.prod(in_volume)
         out_numel = out_channels * numpy.prod(out_volume)
         tensor = module(EYE_FACTORY.get(in_channels, in_volume, device))
@@ -94,12 +94,12 @@ class ConformalLayers(torch.nn.Module):
         for channel in range(out_channels):
             coords[:, channel, -1] = channel
         coords = coords.view(-1, len(out_volume) + 2)
-        row, col = numpy.unravel_index(numpy.ravel_multi_index(tuple(coords[:, dim] for dim in (0, -1, *range(1, coords.shape[1] - 1))), (in_numel, out_channels, *out_volume)), (in_numel, out_numel))
-        row = numpy.concatenate((row, (in_numel,))) #TODO Cópia de memória na concatenação
-        col = numpy.concatenate((col, (out_numel,))) #TODO Cópia de memória na concatenação
+        row, col = unravel_index(ravel_multi_index(tuple(coords[:, dim] for dim in (0, -1, *range(1, coords.shape[1] - 1))), (in_numel, out_channels, *out_volume)), (in_numel, out_numel))
+        row = torch.cat((row, torch.as_tensor((in_numel,), dtype=row.dtype, device=row.device))) #TODO Cópia de memória na concatenação
+        col = torch.cat((col, torch.as_tensor((out_numel,), dtype=col.dtype, device=col.device))) #TODO Cópia de memória na concatenação
         values = tensor.feats.view(-1)
         values = torch.cat((values, torch.as_tensor((1,), dtype=values.dtype, device=values.device))) #TODO Cópia de memória na concatenação
-        return SparseTensor((col, row), values, (out_numel + 1, in_numel + 1), coalesced=False)
+        return SparseTensor(torch.stack((col, row,)), values, (out_numel + 1, in_numel + 1), coalesced=False)
 
     def _poor_mans_tensordots(self, activation_tensor: Union[SparseTensor, ZeroTensor], backward_prod_matrix: Union[SparseTensor, IdentityMatrix], forward_prod_sequential_matrix: SparseTensor) -> Union[SparseTensor, ZeroTensor]:
         A = activation_tensor               # Rank-3 tensor of size (s2, s2, s2)
@@ -114,23 +114,23 @@ class ConformalLayers(torch.nn.Module):
             return ZeroTensor((s1 * s3, s3), A.dtype, A.device)
         # ... otherwise, do it the hard way
         # Step 1: temp1 = FlattenLeft[Transpose[A, 1 <-> 2]]
-        indices1 = numpy.unravel_index(numpy.ravel_multi_index((A.indices[0], A.indices[2], A.indices[1]), (s2, s2, s2)), (s2 * s2, s2))
-        temp1 = SparseTensor(indices1, A.values, (s2 * s2, s2), coalesced=False)
+        indices1 = unravel_index(ravel_multi_index((A.indices[0], A.indices[2], A.indices[1]), (s2, s2, s2)), (s2 * s2, s2))
+        temp1 = SparseTensor(torch.stack(indices1), A.values, (s2 * s2, s2), coalesced=False)
         # Step 2: temp2 = MatMul(temp1, C)
         temp2 = torch.mm(temp1, C)
         # Step 3: temp3 = FlattenRight[ReshapeLeft[temp2]]
-        indices3 = numpy.unravel_index(numpy.ravel_multi_index((temp2.indices[0], temp2.indices[1]), (s2 * s2, s3)), (s2, s2 * s3))
-        temp3 = SparseTensor(indices3, temp2.values, (s2, s2 * s3), coalesced=False)
+        indices3 = unravel_index(ravel_multi_index((temp2.indices[0], temp2.indices[1]), (s2 * s2, s3)), (s2, s2 * s3))
+        temp3 = SparseTensor(torch.stack(indices3), temp2.values, (s2, s2 * s3), coalesced=False)
         # Step 4: temp4 = MatMul(B, temp3)
         temp4 = torch.mm(B, temp3)
         # Step 5: temp5 = FlattenLeft[Transpose[ReshapeRight[temp4], 1 <-> 2]]
-        indices5 = numpy.unravel_index(numpy.ravel_multi_index((temp4.indices[0], temp4.indices[1]), (s1, s2 * s3)), (s1, s2, s3))
-        indices5 = numpy.unravel_index(numpy.ravel_multi_index((indices5[0], indices5[2], indices5[1]), (s1, s3, s2)), (s1 * s3, s2))
-        temp5 = SparseTensor(indices5, temp4.values, (s1 * s3, s2), coalesced=False)
+        indices5 = unravel_index(ravel_multi_index((temp4.indices[0], temp4.indices[1]), (s1, s2 * s3)), (s1, s2, s3))
+        indices5 = unravel_index(ravel_multi_index((indices5[0], indices5[2], indices5[1]), (s1, s3, s2)), (s1 * s3, s2))
+        temp5 = SparseTensor(torch.stack(indices5), temp4.values, (s1 * s3, s2), coalesced=False)
         # Step 6: flat_output = MatMul(temp5, C)
         return torch.mm(temp5, C)
 
-    def _update_cache(self, in_channels: int, in_volume: _size_any_t, dtype: torch.dtype, device: torch.device) -> _cached_signature_t:
+    def _update_cache(self, in_channels: int, in_volume: SizeAny, dtype: torch.dtype, device: torch.device) -> _cached_signature_t:
         in_signature = (in_channels, in_volume)
         if not self._valid_cache or self._cached_signature[0] != in_signature:
             in_numel = in_channels * numpy.prod(in_volume)

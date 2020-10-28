@@ -1,7 +1,7 @@
 from .decorator import singleton
 from .extension import IdentityMatrix, SparseTensor, ZeroTensor
 from .module import ConformalModule
-from .utils import _size_any_t
+from .utils import SizeAny
 from abc import abstractmethod
 from collections import OrderedDict
 from typing import Optional, Tuple, Union
@@ -39,7 +39,7 @@ class SRePro(BaseActivation):
         entries['alpha'] = 'Automatic' if self._alpha is None else self._alpha
         return entries
 
-    def output_size(self, in_channels: int, in_volume: _size_any_t) -> Tuple[int, _size_any_t]:
+    def output_size(self, in_channels: int, in_volume: SizeAny) -> Tuple[int, SizeAny]:
         return in_channels, in_volume
 
     def to_tensor(self, previous: SparseTensor) -> Tuple[SparseTensor, SparseTensor]:
