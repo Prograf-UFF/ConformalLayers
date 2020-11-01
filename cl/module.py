@@ -107,7 +107,7 @@ class ConformalModule(ABC):
 
     def _repr_dict(self) -> OrderedDict:
         entries = OrderedDict()
-        if not self._name is None:
+        if self._name is not None:
             entries['name'] = self.name
         return entries
 
