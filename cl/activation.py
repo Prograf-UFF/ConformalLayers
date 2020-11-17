@@ -50,7 +50,6 @@ class SRePro(BaseActivation):
         if self._alpha is None:
             symmetric = torch.mm(previous, previous.t())
             alpha = torch.sqrt(math.sqrt(symmetric.nnz) * symmetric.values.abs().max(0)[0])
-            # print("SCALARS: ", symmetric.values.abs().max(0)[0])
         else:
             alpha = torch.as_tensor(self.alpha, dtype=previous.dtype, device=previous.device)
         # Compute the last coefficient of the matrix

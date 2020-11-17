@@ -114,10 +114,7 @@ class ConformalLayers(torch.nn.Module):
                         out_channels, out_volume = module.output_size(out_channels, out_volume)
                     # Make tensor representations of the operations in the current layer
                     sequential_matrix = self._compute_torch_module_matrix(in_channels, in_volume, out_channels, out_volume, sequential, device)
-                    # print("SEQ: ", sequential_matrix.values)
                     activation_matrix_scalar, activation_tensor_scalar = activation.to_tensor(sequential_matrix)
-                    # print('117 - activation_matrix_scalar: ', activation_matrix_scalar)
-                    # print('118 - activation_tensor_scalar: ', activation_tensor_scalar)
                     tensors[layer] = (sequential_matrix, activation_matrix_scalar, activation_tensor_scalar)
                     # Get ready for the next layer
                     in_channels, in_volume = out_channels, out_volume
@@ -174,16 +171,7 @@ class ConformalLayers(torch.nn.Module):
         output_as_matrix_extra = cached_matrix_extra * input_as_matrix_extra
         if not isinstance(cached_tensor_extra, ZeroTensor):
             output_as_matrix_extra = output_as_matrix_extra + (torch.mm(cached_tensor_extra, input_as_matrix) * input_as_matrix).sum(dim=0, keepdim=True)
-        # print('\tCACHE\n')
-        # print("cached_matrix: ", cached_matrix.values)
-        # print('cached_tensor_extra: ', cached_tensor_extra.values)
-        # print('\tINPUT\n')
-        # print('input_as_matrix :', input_as_matrix)
-        # print('input_as_matrix_extra: ', input_as_matrix_extra)
         output_as_matrix = output_as_matrix / output_as_matrix_extra
-        # print('\tOUTPUT\n')
-        # print("output: ", output_as_matrix)
-        # print('\n\n')
         return output_as_matrix.t().view(batches, out_channels, *out_volume)
 
     def invalidate_cache(self) -> None:
