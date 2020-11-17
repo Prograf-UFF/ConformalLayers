@@ -1,4 +1,4 @@
-from .utils import _size_any_t
+from .utils import SizeAny
 from abc import ABC, abstractmethod
 from collections import OrderedDict
 from typing import Optional, Tuple
@@ -10,23 +10,23 @@ class NativeModuleWrapper(torch.nn.Module):
         super(NativeModuleWrapper, self).__init__()
 
     @abstractmethod
-    def output_size(self, in_size: _size_any_t) -> _size_any_t:
+    def output_size(self, in_size: SizeAny) -> SizeAny:
         pass
 
 
 class MinkowskiOperationWrapper(NativeModuleWrapper):
     def __init__(self,
-                 kernel_size: _size_any_t,
-                 stride: _size_any_t,
-                 padding: _size_any_t,
-                 dilation: _size_any_t,
+                 kernel_size: SizeAny,
+                 stride: SizeAny,
+                 padding: SizeAny,
+                 dilation: SizeAny,
                  transposed: bool) -> None:
         super(MinkowskiOperationWrapper, self).__init__()
         # Declare basic properties
-        self._kernel_size = torch.as_tensor(kernel_size, dtype=torch.int32)
-        self._stride = torch.as_tensor(stride, dtype=torch.int32)
-        self._padding = torch.as_tensor(padding, dtype=torch.int32)
-        self._dilation = torch.as_tensor(dilation, dtype=torch.int32)
+        self._kernel_size = torch.as_tensor(kernel_size, dtype=torch.int32, device='cpu')
+        self._stride = torch.as_tensor(stride, dtype=torch.int32, device='cpu')
+        self._padding = torch.as_tensor(padding, dtype=torch.int32, device='cpu')
+        self._dilation = torch.as_tensor(dilation, dtype=torch.int32, device='cpu')
         self._transposed = transposed
         self._kernel_generator = me.KernelGenerator(kernel_size=kernel_size, stride=1, dilation=dilation, dimension=len(kernel_size))
         # Compute some constant values and keep them
@@ -47,7 +47,7 @@ class MinkowskiOperationWrapper(NativeModuleWrapper):
         # Compute the complete set of coordinates for evaluating the module
         index_start = self._index_start_offset
         index_end = in_coords[:, 1:].max(0)[0] + self._index_end_offset #TODO Esse max pode ser reaproveitado dos max por batch?
-        out_coords = torch.cat(tuple(torch.stack(torch.meshgrid(torch.as_tensor((batch,), dtype=torch.int32), *map(lambda start, end, step: torch.arange(int(start), int(end), int(step), dtype=torch.int32),
+        out_coords = torch.cat(tuple(torch.stack(torch.meshgrid(torch.as_tensor((batch,), dtype=torch.int32, device='cpu'), *map(lambda start, end, step: torch.arange(int(start), int(end), int(step), dtype=torch.int32, device='cpu'),
             torch.max(index_start, ((indices.min(0)[0] + self._kernel_start_offset - index_start) // self.stride) * self.stride + index_start),
             torch.min(index_end, ((indices.max(0)[0] + self._kernel_end_offset - index_start) // self.stride + 1) * self.stride + index_start),
             self.stride)), dim=-1).view(-1, 1 + input.dimension) for batch, indices in enumerate(indices_per_batch)), dim=0)
@@ -107,14 +107,14 @@ class ConformalModule(ABC):
 
     def _repr_dict(self) -> OrderedDict:
         entries = OrderedDict()
-        if not self._name is None:
+        if self._name is not None:
             entries['name'] = self.name
         return entries
 
     def _register_parent(self, parent, index: int) -> None:
         pass
 
-    def output_size(self, in_channels: int, in_volume: _size_any_t) -> Tuple[int, _size_any_t]:
+    def output_size(self, in_channels: int, in_volume: SizeAny) -> Tuple[int, SizeAny]:
         return self.native.output_size(in_channels, in_volume)
     
     @property

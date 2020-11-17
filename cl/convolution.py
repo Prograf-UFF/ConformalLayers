@@ -1,10 +1,10 @@
 from .module import MinkowskiOperationWrapper, ConformalModule
-from .utils import _int_or_size_1_t, _int_or_size_2_t, _int_or_size_3_t, _size_any_t, _pair, _single, _triple
+from .utils import IntOrSize1, IntOrSize2, IntOrSize3, SizeAny, Pair, Single, Triple
 from collections import OrderedDict
 from typing import Optional, Tuple
 import MinkowskiEngine as me
-import torch
-
+import math, torch
+import os
 
 class WrappedMinkowskiConvolution(MinkowskiOperationWrapper):
     def __init__(self, in_channels: int, out_channels: int, **kwargs) -> None:
@@ -13,12 +13,17 @@ class WrappedMinkowskiConvolution(MinkowskiOperationWrapper):
         self._out_channels = out_channels
         self._kernel = torch.nn.Parameter(torch.FloatTensor(self.kernel_generator.kernel_volume, in_channels, out_channels))
         self._function = me.MinkowskiConvolutionFunction()
+        self.reset_parameters()
+        
 
     def _apply_function(self, input: me.SparseTensor, region_type: me.RegionType, region_offset: torch.IntTensor, out_coords_key: me.CoordsKey) -> torch.Tensor:
         return self._function.apply(input.feats, self.kernel, input.tensor_stride, 1, self.kernel_size, self.dilation, region_type, region_offset, input.coords_key, out_coords_key, input.coords_man)
 
-    def output_size(self, in_channels: int, in_volume: _size_any_t) -> Tuple[int, _size_any_t]:
-        return self.out_channels, tuple(map(int, (torch.as_tensor(in_volume, dtype=torch.int32) + 2 * self.padding - self.dilation * (self.kernel_size - 1) - 1) // self.stride + 1))
+    def output_size(self, in_channels: int, in_volume: SizeAny) -> Tuple[int, SizeAny]:
+        return self.out_channels, tuple(map(int, (torch.as_tensor(in_volume, dtype=torch.int32, device='cpu') + 2 * self.padding - self.dilation * (self.kernel_size - 1) - 1) // self.stride + 1))
+
+    def reset_parameters(self) -> None:
+        torch.nn.init.kaiming_uniform_(self._kernel, a=math.sqrt(5))
 
     @property
     def in_channels(self) -> int:
@@ -34,20 +39,24 @@ class WrappedMinkowskiConvolution(MinkowskiOperationWrapper):
 
 
 class WrappedMinkowskiConvolutionTranspose(MinkowskiOperationWrapper):
-    def __init__(self, in_channels: int, out_channels: int, output_padding: _size_any_t, **kwargs) -> None:
+    def __init__(self, in_channels: int, out_channels: int, output_padding: SizeAny, **kwargs) -> None:
         super(WrappedMinkowskiConvolutionTranspose, self).__init__(transposed=True, **kwargs)
         self._in_channels = in_channels
         self._out_channels = out_channels
-        self._output_padding = torch.as_tensor(output_padding, dtype=torch.int32)
+        self._output_padding = torch.as_tensor(output_padding, dtype=torch.int32, device='cpu')
         self._kernel = torch.nn.Parameter(torch.FloatTensor(self.kernel_generator.kernel_volume, in_channels, out_channels))
         self._function = me.MinkowskiConvolutionTransposeFunction()
+        self.reset_parameters()
         raise NotImplementedError() #TODO Como lidar com output_padding durante a avaliação do módulo?
 
     def _apply_function(self, input: me.SparseTensor, region_type: me.RegionType, region_offset: torch.IntTensor, out_coords_key: me.CoordsKey) -> torch.Tensor:
         return self._function.apply(input.feats, self.kernel, input.tensor_stride, 1, self.kernel_size, self.dilation, region_type, region_offset, False, input.coords_key, out_coords_key, input.coords_man)
 
-    def output_size(self, in_channels: int, in_volume: _size_any_t) -> Tuple[int, _size_any_t]:
-        return self.out_channels, tuple((torch.as_tensor(in_volume, dtype=torch.int32) - 1) * self.stride - 2 * self.padding + self.output_padding + self.dilation * (self.kernel_size - 1) + 1)
+    def output_size(self, in_channels: int, in_volume: SizeAny) -> Tuple[int, SizeAny]:
+        return self.out_channels, tuple((torch.as_tensor(in_volume, dtype=torch.int32, device='cpu') - 1) * self.stride - 2 * self.padding + self.output_padding + self.dilation * (self.kernel_size - 1) + 1)
+
+    def reset_parameters(self) -> None:
+        torch.nn.init.kaiming_uniform_(self._kernel, a=math.sqrt(5))
 
     @property
     def in_channels(self) -> int:
@@ -70,10 +79,10 @@ class ConvNd(ConformalModule):
     def __init__(self,
                  in_channels: int,
                  out_channels: int,
-                 kernel_size: _size_any_t,
-                 stride: _size_any_t,
-                 padding: _size_any_t,
-                 dilation: _size_any_t,
+                 kernel_size: SizeAny,
+                 stride: SizeAny,
+                 padding: SizeAny,
+                 dilation: SizeAny,
                  *, name: Optional[str]=None) -> None:
         super(ConvNd, self).__init__(
             WrappedMinkowskiConvolution(
@@ -86,8 +95,7 @@ class ConvNd(ConformalModule):
             name=name)
 
     def _register_parent(self, parent, index: int) -> None:
-        parent.register_parameter(f'{self.__class__.__name__}[{index}]' if self._name is None else self._name, self.native.kernel)
-        self.native.kernel.register_hook(lambda _: parent.invalidate_cache())
+        parent._parameterz.append(self.native.kernel)
 
     def _repr_dict(self) -> OrderedDict:
         entries = super()._repr_dict()
@@ -98,6 +106,9 @@ class ConvNd(ConformalModule):
         entries['padding'] = tuple(map(int, self.padding))
         entries['dilation'] = tuple(map(int, self.dilation))
         return entries
+
+    def reset_parameters(self) -> None:
+        self.native.reset_parameters()
 
     @property
     def in_channels(self) -> int:
@@ -132,18 +143,18 @@ class Conv1d(ConvNd):
     def __init__(self,
                  in_channels: int,
                  out_channels: int,
-                 kernel_size: _int_or_size_1_t,
-                 stride: _int_or_size_1_t=1,
-                 padding: _int_or_size_1_t=0,
-                 dilation: _int_or_size_1_t=1,
+                 kernel_size: IntOrSize1,
+                 stride: IntOrSize1=1,
+                 padding: IntOrSize1=0,
+                 dilation: IntOrSize1=1,
                  *, name: Optional[str]=None) -> None:
         super(Conv1d, self).__init__(
             in_channels=in_channels,
             out_channels=out_channels,
-            kernel_size=_single(kernel_size),
-            stride=_single(stride),
-            padding=_single(padding),
-            dilation=_single(dilation),
+            kernel_size=Single(kernel_size),
+            stride=Single(stride),
+            padding=Single(padding),
+            dilation=Single(dilation),
             name=name)
 
 
@@ -151,18 +162,18 @@ class Conv2d(ConvNd):
     def __init__(self,
                  in_channels: int,
                  out_channels: int,
-                 kernel_size: _int_or_size_2_t,
-                 stride: _int_or_size_2_t=1,
-                 padding: _int_or_size_2_t=0,
-                 dilation: _int_or_size_2_t=1,
+                 kernel_size: IntOrSize2,
+                 stride: IntOrSize2=1,
+                 padding: IntOrSize2=0,
+                 dilation: IntOrSize2=1,
                  *, name: Optional[str]=None) -> None:
         super(Conv2d, self).__init__(
             in_channels=in_channels,
             out_channels=out_channels,
-            kernel_size=_pair(kernel_size),
-            stride=_pair(stride),
-            padding=_pair(padding),
-            dilation=_pair(dilation),
+            kernel_size=Pair(kernel_size),
+            stride=Pair(stride),
+            padding=Pair(padding),
+            dilation=Pair(dilation),
             name=name)
 
 
@@ -170,18 +181,18 @@ class Conv3d(ConvNd):
     def __init__(self,
                  in_channels: int,
                  out_channels: int,
-                 kernel_size: _int_or_size_3_t,
-                 stride: _int_or_size_3_t=1,
-                 padding: _int_or_size_3_t=0,
-                 dilation: _int_or_size_3_t=1,
+                 kernel_size: IntOrSize3,
+                 stride: IntOrSize3=1,
+                 padding: IntOrSize3=0,
+                 dilation: IntOrSize3=1,
                  *, name: Optional[str]=None) -> None:
         super(Conv3d, self).__init__(
             in_channels=in_channels,
             out_channels=out_channels,
-            kernel_size=_triple(kernel_size),
-            stride=_triple(stride),
-            padding=_triple(padding),
-            dilation=_triple(dilation),
+            kernel_size=Triple(kernel_size),
+            stride=Triple(stride),
+            padding=Triple(padding),
+            dilation=Triple(dilation),
             name=name)
 
 
@@ -189,11 +200,11 @@ class ConvTransposeNd(ConformalModule):
     def __init__(self,
                  in_channels: int,
                  out_channels: int,
-                 kernel_size: _size_any_t,
-                 stride: _size_any_t,
-                 padding: _size_any_t,
-                 output_padding: _size_any_t,
-                 dilation: _size_any_t,
+                 kernel_size: SizeAny,
+                 stride: SizeAny,
+                 padding: SizeAny,
+                 output_padding: SizeAny,
+                 dilation: SizeAny,
                  *, name: Optional[str]=None) -> None:
         super(ConvTransposeNd, self).__init__(
             WrappedMinkowskiConvolutionTranspose(
@@ -207,8 +218,7 @@ class ConvTransposeNd(ConformalModule):
             name=name)
 
     def _register_parent(self, parent, index: int) -> None:
-        parent.register_parameter(f'{self.__class__.__name__}[{index}]' if self._name is None else self._name, self.native.kernel)
-        self.native.kernel.register_hook(lambda _: parent.invalidate_cache())
+        parent._parameterz.append(self.native.kernel)
 
     def _repr_dict(self) -> OrderedDict:
         entries = super()._repr_dict()
@@ -220,6 +230,9 @@ class ConvTransposeNd(ConformalModule):
         entries['output_padding'] = tuple(map(int, self.output_padding))
         entries['dilation'] = tuple(map(int, self.dilation))
         return entries
+
+    def reset_parameters(self) -> None:
+        self.native.reset_parameters()
 
     @property
     def in_channels(self) -> int:
@@ -258,20 +271,20 @@ class ConvTranspose1d(ConvTransposeNd):
     def __init__(self,
                  in_channels: int,
                  out_channels: int,
-                 kernel_size: _int_or_size_1_t,
-                 stride: _int_or_size_1_t=1,
-                 padding: _int_or_size_1_t=0,
-                 output_padding: _int_or_size_1_t=0,
-                 dilation: _int_or_size_1_t=1,
+                 kernel_size: IntOrSize1,
+                 stride: IntOrSize1=1,
+                 padding: IntOrSize1=0,
+                 output_padding: IntOrSize1=0,
+                 dilation: IntOrSize1=1,
                  *, name: Optional[str]=None) -> None:
         super(ConvTranspose1d, self).__init__(
             in_channels=in_channels,
             out_channels=out_channels,
-            kernel_size=_single(kernel_size),
-            stride=_single(stride),
-            padding=_single(padding),
-            output_padding=_single(output_padding),
-            dilation=_single(dilation),
+            kernel_size=Single(kernel_size),
+            stride=Single(stride),
+            padding=Single(padding),
+            output_padding=Single(output_padding),
+            dilation=Single(dilation),
             name=name)
 
 
@@ -279,20 +292,20 @@ class ConvTranspose2d(ConvTransposeNd):
     def __init__(self,
                  in_channels: int,
                  out_channels: int,
-                 kernel_size: _int_or_size_2_t,
-                 stride: _int_or_size_2_t=1,
-                 padding: _int_or_size_2_t=0,
-                 output_padding: _int_or_size_2_t=0,
-                 dilation: _int_or_size_2_t=1,
+                 kernel_size: IntOrSize2,
+                 stride: IntOrSize2=1,
+                 padding: IntOrSize2=0,
+                 output_padding: IntOrSize2=0,
+                 dilation: IntOrSize2=1,
                  *, name: Optional[str]=None) -> None:
         super(ConvTranspose2d, self).__init__(
             in_channels=in_channels,
             out_channels=out_channels,
-            kernel_size=_pair(kernel_size),
-            stride=_pair(stride),
-            padding=_pair(padding),
-            output_padding=_pair(output_padding),
-            dilation=_pair(dilation),
+            kernel_size=Pair(kernel_size),
+            stride=Pair(stride),
+            padding=Pair(padding),
+            output_padding=Pair(output_padding),
+            dilation=Pair(dilation),
             name=name)
 
 
@@ -300,18 +313,18 @@ class ConvTranspose3d(ConvTransposeNd):
     def __init__(self,
                  in_channels: int,
                  out_channels: int,
-                 kernel_size: _int_or_size_3_t,
-                 stride: _int_or_size_3_t=1,
-                 padding: _int_or_size_3_t=0,
-                 output_padding: _int_or_size_3_t=0,
-                 dilation: _int_or_size_3_t=1,
+                 kernel_size: IntOrSize3,
+                 stride: IntOrSize3=1,
+                 padding: IntOrSize3=0,
+                 output_padding: IntOrSize3=0,
+                 dilation: IntOrSize3=1,
                  *, name: Optional[str]=None) -> None:
         super(ConvTranspose3d, self).__init__(
             in_channels=in_channels,
             out_channels=out_channels,
-            kernel_size=_triple(kernel_size),
-            stride=_triple(stride),
-            padding=_triple(padding),
-            output_padding=_triple(output_padding),
-            dilation=_triple(dilation),
+            kernel_size=Triple(kernel_size),
+            stride=Triple(stride),
+            padding=Triple(padding),
+            output_padding=Triple(output_padding),
+            dilation=Triple(dilation),
             name=name)

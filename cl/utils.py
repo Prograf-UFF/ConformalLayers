@@ -1,8 +1,9 @@
 from itertools import repeat
 from typing import Iterable, Tuple, Union
+import numpy, torch
 
 
-def _ntuple(n: int) -> Union[Iterable[int], Tuple[int, ...]]:
+def NTuple(n: int) -> Union[Iterable[int], Tuple[int, ...]]:
     def parse(arg):
         if isinstance(arg, Iterable):
             return arg
@@ -10,11 +11,26 @@ def _ntuple(n: int) -> Union[Iterable[int], Tuple[int, ...]]:
     return parse
 
 
-_single = _ntuple(1)
-_pair = _ntuple(2)
-_triple = _ntuple(3)
+Single = NTuple(1)
+Pair = NTuple(2)
+Triple = NTuple(3)
 
-_int_or_size_1_t = Union[int, Tuple[int]]
-_int_or_size_2_t = Union[int, Tuple[int, int]]
-_int_or_size_3_t = Union[int, Tuple[int, int, int]]
-_size_any_t = Tuple[int, ...]
+IntOrSize1 = Union[int, Tuple[int]]
+IntOrSize2 = Union[int, Tuple[int, int]]
+IntOrSize3 = Union[int, Tuple[int, int, int]]
+SizeAny = Tuple[int, ...]
+
+
+def ravel_multi_index(multi_index: Tuple[torch.Tensor, ...], dims: Tuple[int, ...]) -> torch.Tensor:
+    out = multi_index[-1].clone().detach()
+    for ind, stride in zip(multi_index[-2::-1], numpy.cumprod(dims[:0:-1])):
+        out += ind * stride
+    return out
+
+
+def unravel_index(index: torch.Tensor, shape: Tuple[int, ...]) -> Tuple[torch.Tensor, ...]:
+    out = []
+    for dim in reversed(shape):
+        out.append(index % dim)
+        index = index // dim
+    return tuple(reversed(out))
