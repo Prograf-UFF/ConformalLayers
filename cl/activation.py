@@ -44,12 +44,12 @@ class SRePro(BaseActivation):
         return in_channels, in_volume
 
     def to_tensor(self, previous: SparseTensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        nrows, _ = previous.shape
-        ind = numpy.arange(nrows, dtype=numpy.int64)
         # Compute the alpha parameter
         if self._alpha is None:
+            # print("before mm")
             symmetric = torch.mm(previous, previous.t())
-            alpha = torch.sqrt(math.sqrt(symmetric.nnz) * symmetric.values.abs().max(0)[0])
+            # print("after mm")
+            alpha = torch.sqrt(math.sqrt(symmetric.nnz) * symmetric.values.detach().abs().max(0)[0])
         else:
             alpha = torch.as_tensor(self.alpha, dtype=previous.dtype, device=previous.device)
         # Compute the last coefficient of the matrix
