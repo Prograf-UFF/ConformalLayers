@@ -118,7 +118,7 @@ class ConformalLayers(torch.nn.Module):
 
                         sequential_matrix = self._compute_torch_module_matrix(in_channels, in_volume, out_channels, out_volume, sequential, device)
                         activation_matrix_scalar, activation_tensor_scalar = activation.to_tensor(sequential_matrix)
-                        tensors[layer] = (sequential_matrix, activation_matrix_scalar, activation_tensor_scalar)
+                        tensors[layer] = (sequential_matrix, activation_matrix_scalar, activation_tensor_scalar.detach())
 
                     # Get ready for the next layer
                     in_channels, in_volume = out_channels, out_volume
@@ -138,7 +138,7 @@ class ConformalLayers(torch.nn.Module):
                     cached_matrix = torch.mm(sequential_matrix, cached_matrix)
                     if activation_tensor_scalar is not None:
                         current_extra = torch.mm(cached_matrix.t(), cached_matrix)
-                        current_extra = torch.mul(current_extra, activation_tensor_scalar)
+                        current_extra = torch.mul(current_extra, backward_prod_matrix_extra * activation_tensor_scalar)
                         cached_tensor_extra = torch.add(cached_tensor_extra, current_extra)
                 self._cached_matrix = cached_matrix
                 self._cached_tensor_extra = cached_tensor_extra
