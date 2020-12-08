@@ -168,11 +168,6 @@ class SparseTensor(CustomTensor):
             self._indices, self._values = torch_sparse.coalesce(self._indices, self._values, self.shape[0], self.shape[1])
             self._coalesced = True
 
-    def clone(self):
-        indices, values = self._indices.detach().clone(), self._values.detach().clone()
-        shape, coalesced = self._size, self._coalesced
-        return SparseTensor(indices, values, shape, coalesced=coalesced)
-
     def copy_(self, src: CustomTensor) -> 'SparseTensor':
         if isinstance(scr, IdentityMatrix): #TODO Lidar com broadcast
             raise NotImplementedError() #TODO Implementar
@@ -194,7 +189,7 @@ class SparseTensor(CustomTensor):
 
     def t(self) -> 'SparseTensor':
         if self.ndim == 2:
-            return SparseTensor(self.indices.detach().clone()[[1, 0]], self.values.detach().clone(), (self.shape[1], self.shape[0]), coalesced=False)
+            return SparseTensor(self.indices[[1, 0]], self.values, (self.shape[1], self.shape[0]), coalesced=False)
         elif self.ndim < 2:
             return self
         raise RuntimeError('t() expects a tensor with <= 2 dimensions.')
@@ -337,72 +332,8 @@ def _mm(lhs: Union[torch.Tensor, CustomTensor], rhs: Union[torch.Tensor, CustomT
         elif isinstance(rhs, SparseTensor):
             lhs.coalesce()
             rhs.coalesce()
-            #with open("lhs_indices.pt", "wb") as f:
-            #    torch.save(lhs.indices, f)
-            #with open("lhs_values.pt", "wb") as f:
-            #    torch.save(lhs.values, f)
-            #with open("rhs_indices.pt", "wb") as f:
-            #    torch.save(rhs.indices, f)
-            #with open("rhs_values.pt", "wb") as f:
-            #    torch.save(lhs.values, f)
-
-            # print('PRINTIZÃO DO DEBUG ANTES: \n\n')
-            # print('--------------------------------------')
-            # print('lhs.indices: ', lhs.indices.shape)
-            # print('lhs.values: ', lhs.values.shape)
-            # print('lhs.shape: ', lhs.shape)
-            # print('rhs.indices: ', rhs.indices.shape)
-            # print('rhs.values: ', rhs.values.shape)
-            # print('rhs.shape: ', rhs.shape)
-            # print('--------------------------------------\n')
-
-
-            lhs_indices = lhs.indices.clone().to('cpu')
-            lhs_values = lhs.values.clone().to('cpu')
-            rhs_indices = rhs.indices.clone().to('cpu')
-            rhs_values = lhs.values.clone().to('cpu')
-            
-            # mask = lhs.values != 0
-            # lhs_indices = lhs.indices[:, mask].detach().clone()
-            # lhs_values = lhs.values[mask].detach().clone()
-
-            # mask = rhs.values != 0
-            # rhs_indices = rhs.indices[:, mask].detach().clone()
-            # rhs_values = rhs.values[mask].detach().clone()
-
-            # lhs_indices, lhs_values = torch_sparse.coalesce(lhs_indices, lhs_values, lhs.shape[0], lhs.shape[1],  op="add")
-            # rhs_indices, rhs_values = torch_sparse.coalesce(rhs_indices, rhs_values, rhs.shape[0], rhs.shape[1],  op="add")
-
-            # print('PRINTIZÃO DO DEBUG DEPOIS: \n\n')
-            # print('--------------------------------------')
-            # print('lhs_indices: ', lhs_indices.shape)
-            # print('lhs_values: ', lhs_values.shape)
-            # print('lhs_shape: ', lhs.shape)
-            # print('rhs_indices: ', rhs_indices.shape)
-            # print('rhs_values: ', rhs_values.shape)
-            # print('rhs_shape: ', rhs.shape)
-            # print('--------------------------------------\n')
-            
-            # print('lhs.values: ', lhs_values)
-            # print('rhs.values: ', rhs_values)
-            # print('lhs.values == rhs.values: ', torch.all(lhs_values == rhs_values))
-
-
-            indices, values = torch_sparse.spspmm(lhs_indices, lhs_values, rhs_indices, rhs_values, lhs.shape[0], lhs.shape[1], rhs.shape[1], coalesced=True) # TODO verificar se ainda esta coalesced aqui
-                        
-            #with open("result_indices.pt", "wb") as f:
-            #    torch.save(indices, f)
-            #with open("result_values.pt", "wb") as f:
-            #    torch.save(values, f)
-
-
-            # print("SHAPE: ", lhs.shape, rhs.shape)
-
-            #time.sleep(10)
-            # TODO assert (indices, values) are coalesced
-            t = SparseTensor(indices, values.to('cuda:0'), (lhs.shape[0], rhs.shape[1]), coalesced=True)
-            # torch.cuda.synchronize()
-            return t
+            indices, values = torch_sparse.spspmm(lhs.indices, lhs.values, rhs.indices, rhs.values, lhs.shape[0], lhs.shape[1], rhs.shape[1], coalesced=True)
+            return SparseTensor(indices, values, (lhs.shape[0], rhs.shape[1]), coalesced=True)
         elif isinstance(rhs, ZeroTensor):
             return ZeroTensor((lhs.shape[0], rhs.shape[1]), dtype=lhs.dtype, device=lhs.dtype)
         elif isinstance(rhs, torch.Tensor):
