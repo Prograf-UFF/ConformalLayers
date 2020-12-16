@@ -7,7 +7,7 @@ from collections import OrderedDict
 from typing import Iterator, List, Tuple, Union
 import MinkowskiEngine as me
 import numpy, operator, threading, torch
-
+import gc
 
 _cached_signature_t = Tuple[Tuple[int, SizeAny], Tuple[int, SizeAny], torch.dtype]  # Format: ((in_channels, in_volume), (out_channels, out_volume), dtype)
 
@@ -38,7 +38,7 @@ class EyeFactory(object):
             for channel in range(in_channels):
                 feats[channel*in_entries:(channel+1)*in_entries, channel] = 1
             eye = me.SparseTensor(feats, coords) 
-            self._cache[key] = eye
+            # self._cache[key] = eye
         return eye
 
 
@@ -91,6 +91,7 @@ class ConformalLayers(torch.nn.Module):
         in_numel = in_channels * numpy.prod(in_volume)
         out_numel = out_channels * numpy.prod(out_volume)
         eye = EYE_FACTORY.get(in_channels, in_volume, device)
+        # TODO é possível utilizar uma visão da Eye?
         tensor = module(eye)
         coords = tensor.coords.view(-1, 1 + len(out_volume), 1).expand(-1, -1, out_channels).permute(0, 2, 1)
         coords = torch.cat((coords, torch.empty((len(coords), out_channels, 1), dtype=torch.int32, device=coords.device)), 2)
@@ -101,6 +102,7 @@ class ConformalLayers(torch.nn.Module):
         values = tensor.feats.view(-1)
         return SparseTensor(torch.stack((col, row,)), values, (out_numel, in_numel), coalesced=False)
 
+    # @torch.no_grad()
     def _update_cache(self, in_channels: int, in_volume: SizeAny, dtype: torch.dtype, device: torch.device) -> _cached_signature_t:
         in_signature = (in_channels, in_volume)
         # TODO rever condição para atualização da cache
@@ -116,9 +118,11 @@ class ConformalLayers(torch.nn.Module):
                         out_channels, out_volume = module.output_size(out_channels, out_volume)
                         # Make tensor representations of the operations in the current layer
 
+                        # print('\n\n BEFORE: ', torch.cuda.memory_allocated() / 1024)
                         sequential_matrix = self._compute_torch_module_matrix(in_channels, in_volume, out_channels, out_volume, sequential, device)
+                        # print('AFTER: ', torch.cuda.memory_allocated() / 1024, '\n\n')
                         activation_matrix_scalar, activation_tensor_scalar = activation.to_tensor(sequential_matrix)
-                        tensors[layer] = (sequential_matrix, activation_matrix_scalar, activation_tensor_scalar.detach())
+                        tensors[layer] = (sequential_matrix, activation_matrix_scalar, activation_tensor_scalar)
 
                     # Get ready for the next layer
                     in_channels, in_volume = out_channels, out_volume
@@ -155,18 +159,16 @@ class ConformalLayers(torch.nn.Module):
         batches, in_channels, *in_volume = input.shape
         # If necessary, update cached data
         _, (out_channels, out_volume), _ = self._update_cache(in_channels, tuple(in_volume), input.dtype, input.device)
-        cached_matrix, cached_matrix_extra = self._cached_matrix, self._cached_matrix_extra
-        cached_tensor_extra = self._cached_tensor_extra
-
+        gc.collect()
         # Reshape the input as a matrix where each batch entry corresponds to a column 
         input_as_matrix = input.view(batches, -1).t()
         input_as_matrix_extra = input_as_matrix.norm(dim=0, keepdim=True)
         # Apply the Conformal Layers
-        output_as_matrix = torch.mm(cached_matrix, input_as_matrix)
-        output_as_matrix_extra = cached_matrix_extra * input_as_matrix_extra
-        if not isinstance(cached_tensor_extra, ZeroTensor):
-            output_as_matrix_extra = output_as_matrix_extra + (torch.mm(cached_tensor_extra, input_as_matrix) * input_as_matrix).sum(dim=0, keepdim=True)
-        output_as_matrix = output_as_matrix / output_as_matrix_extra
+        output_as_matrix = torch.mm(self._cached_matrix, input_as_matrix)
+        output_as_matrix_extra = self._cached_matrix_extra * input_as_matrix_extra
+        if not isinstance(self._cached_tensor_extra, ZeroTensor):
+            output_as_matrix_extra = output_as_matrix_extra + (torch.mm(self._cached_tensor_extra, input_as_matrix) * input_as_matrix).sum(dim=0, keepdim=True)
+        output_as_matrix /= output_as_matrix_extra
         return output_as_matrix.t().view(batches, out_channels, *out_volume)
 
     def invalidate_cache(self) -> None:
