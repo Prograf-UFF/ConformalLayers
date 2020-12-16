@@ -117,10 +117,8 @@ class ConformalLayers(torch.nn.Module):
                     for module in sequential:
                         out_channels, out_volume = module.output_size(out_channels, out_volume)
                         # Make tensor representations of the operations in the current layer
-
-                        # print('\n\n BEFORE: ', torch.cuda.memory_allocated() / 1024)
                         sequential_matrix = self._compute_torch_module_matrix(in_channels, in_volume, out_channels, out_volume, sequential, device)
-                        # print('AFTER: ', torch.cuda.memory_allocated() / 1024, '\n\n')
+
                         activation_matrix_scalar, activation_tensor_scalar = activation.to_tensor(sequential_matrix)
                         tensors[layer] = (sequential_matrix, activation_matrix_scalar, activation_tensor_scalar)
 
