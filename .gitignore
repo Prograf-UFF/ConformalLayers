@@ -4,8 +4,8 @@ Datasets/HARDataset/.DS_Store
 HARDataset/.DS_Store
 /.vscode
 
-Experiments/01__ConformalLayers_vs_VGG__CIFAR10/
+Experiments/data/
+Datasets/
+Experiments/LeNet_MNIST
 
 sandbox/
-
-Experiments/
