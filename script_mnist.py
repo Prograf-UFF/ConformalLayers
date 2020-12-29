@@ -47,6 +47,7 @@ else:
 
 # The size of the batch
 BATCHSIZE = 16
+#TODO BATCHSIZE = 1
 
 
 # Sets the seed for reproducibility
@@ -63,10 +64,8 @@ def get_dataset():
         # transforms.Normalize((0.1307,), (0.3081,))
         ])
     
-    dataset1 = torchvision.datasets.MNIST('../data', train=True, download=True,
-                       transform=transform)
-    dataset2 = torchvision.datasets.MNIST('../data', train=False,
-                       transform=transform)
+    dataset1 = torchvision.datasets.MNIST('./Datasets', train=True, download=True, transform=transform)
+    dataset2 = torchvision.datasets.MNIST('./Datasets', train=False, transform=transform)
     
     trainloader = torch.utils.data.DataLoader(dataset1, batch_size=BATCHSIZE, shuffle=False)
     testloader = torch.utils.data.DataLoader(dataset2, batch_size=BATCHSIZE, shuffle=False)
