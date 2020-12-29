@@ -2,7 +2,7 @@ from .decorator import singleton
 from abc import ABC, abstractmethod
 from collections import OrderedDict
 from typing import Callable, Iterable, Optional, Union
-import functools, numpy, re, torch, torch_sparse, time
+import functools, numpy, re, torch, torch_sparse
 
 assert torch_sparse.__version__ == '0.4.4', 'Proper autograd support in torch_sparse.spspmm() implemented only in version 0.4.4 (see https://github.com/rusty1s/pytorch_sparse/issues/45).'
 

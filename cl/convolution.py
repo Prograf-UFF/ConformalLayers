@@ -4,7 +4,7 @@ from collections import OrderedDict
 from typing import Optional, Tuple
 import MinkowskiEngine as me
 import math, torch
-import os
+
 
 class WrappedMinkowskiConvolution(MinkowskiOperationWrapper):
     def __init__(self, in_channels: int, out_channels: int, **kwargs) -> None:
