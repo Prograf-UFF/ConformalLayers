@@ -1,14 +1,10 @@
+import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-import torch.optim as optim
 import torch.backends.cudnn as cudnn
 import torchvision
 import torchvision.transforms as transforms  
-import os
-import argparse
-import sys
-import numpy as np
+import warnings
 
 try:
     import cl
@@ -16,7 +12,9 @@ except ModuleNotFoundError:
     import os, sys
     sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
     import cl
+
 from Experiments.utils.utils import progress_bar
+from utils import Stopwatch
 
 
 # Defines a NN topology
@@ -42,12 +40,11 @@ DEVICE = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('
 if DEVICE.type == 'cuda':
     torch.cuda.set_device(DEVICE)
 else:
-    print('Warning: The device was set to CPU.')
+    warnings.warn('The device was set to CPU.', RuntimeWarning)
 
 
 # The size of the batch
 BATCHSIZE = 16
-#TODO BATCHSIZE = 1
 
 
 # Sets the seed for reproducibility
@@ -75,25 +72,31 @@ def get_dataset():
 
 net = Network().to(DEVICE)
 criterion = nn.CrossEntropyLoss()
-optimizer = optim.SGD(net.parameters(), lr=0.01, momentum=0.9)
+optimizer = cl.SGD(net.parameters(), [net.features], lr=0.01, momentum=0.9)  #[ConformalLayers Hint] One has to use an optimizer adapted for the ConformalLayers
 
 trainloader, testloader = get_dataset()
 
 
 def train(epoch, optimizer):
-    print('\nEpoch: %d' % epoch)
     net.train()
-    train_loss = 0
-    correct = 0
-    total = 0
-    loss_arr = []
-    acc_arr = []
+    train_loss, correct, total = 0, 0, 0
+    loss_arr, acc_arr = [], []
     for batch_idx, (inputs, targets) in enumerate(trainloader):
         optimizer.zero_grad()
-        if DEVICE.type == 'cuda':
-            inputs, targets = inputs.to(DEVICE), targets.to(DEVICE)
-        outputs = net(inputs)
-        loss = criterion(outputs, targets)
+        inputs, targets = inputs.to(DEVICE), targets.to(DEVICE)
+        
+        with Stopwatch('Train -- Epoch {epoch}, Batch {batch_idx} -- Forward        -- Elapsed time: {et_str}.', {'epoch': epoch, 'batch_idx': batch_idx}):
+            outputs = net(inputs)
+
+        with Stopwatch('Train -- Epoch {epoch}, Batch {batch_idx} -- Loss           -- Elapsed time: {et_str}.', {'epoch': epoch, 'batch_idx': batch_idx}):
+            loss = criterion(outputs, targets)
+
+        with Stopwatch('Train -- Epoch {epoch}, Batch {batch_idx} -- Backward       -- Elapsed time: {et_str}.', {'epoch': epoch, 'batch_idx': batch_idx}):
+            loss.backward(retain_graph=True) #[ConformalLayers Hint] One has to set retain_graph=True while calling loss.backward() to keep the graph used to compute data cached by ConformalLayer objects
+
+        with Stopwatch('Train -- Epoch {epoch}, Batch {batch_idx} -- Optimizer Step -- Elapsed time: {et_str}.', {'epoch': epoch, 'batch_idx': batch_idx}):
+            optimizer.step()
+        net.features.invalidate_cache()  #TODO Remover, caso a atualização da cache se mostre correta
 
         loss_arr.append(loss.detach().item())
         train_loss += loss_arr[-1]
@@ -103,11 +106,7 @@ def train(epoch, optimizer):
         correct += predicted.eq(targets).sum().item()
         acc_arr.append(correct / total)
 
-        loss.backward()
-        optimizer.step()
-        net.features.invalidate_cache()
-   
-        progress_bar(batch_idx, len(trainloader), 'Loss: %.3f | Acc: %.3f%% (%d/%d)'
+        progress_bar(batch_idx, len(trainloader), 'Loss: %.3f | Acc: %.3f%% (%d/%d)\n'
                     % (train_loss/(batch_idx+1), 100.*correct/total, correct, total))
 
     return loss_arr, acc_arr
@@ -116,16 +115,16 @@ def train(epoch, optimizer):
 @torch.no_grad()
 def test(epoch):
     net.eval()
-    test_loss = 0
-    correct = 0
-    total = 0
-    loss_arr = []
-    acc_arr = []
+    test_loss, correct, total = 0, 0, 0
+    loss_arr, acc_arr = [], []
     for batch_idx, (inputs, targets) in enumerate(testloader):
-        if DEVICE.type == 'cuda':
-            inputs, targets = inputs.to(DEVICE), targets.to(DEVICE)
-        outputs = net(inputs)
-        loss = criterion(outputs, targets)
+        inputs, targets = inputs.to(DEVICE), targets.to(DEVICE)
+
+        with Stopwatch('Test -- Epoch {epoch}, Batch {batch_idx} -- Forward -- Elapsed time: {et_str}.', {'epoch': epoch, 'batch_idx': batch_idx}):
+            outputs = net(inputs)
+
+        with Stopwatch('Test -- Epoch {epoch}, Batch {batch_idx} -- Loss    -- Elapsed time: {et_str}.', {'epoch': epoch, 'batch_idx': batch_idx}):
+            loss = criterion(outputs, targets)
 
         loss_arr.append(loss.detach().item())
         test_loss += loss_arr[-1]
@@ -135,7 +134,7 @@ def test(epoch):
         correct += predicted.eq(targets).sum().item()
         acc_arr.append(correct / total)
 
-        progress_bar(batch_idx, len(testloader), 'Loss: %.3f | Acc: %.3f%% (%d/%d)'
+        progress_bar(batch_idx, len(testloader), 'Loss: %.3f | Acc: %.3f%% (%d/%d)\n'
                         % (test_loss/(batch_idx+1), 100.*correct/total, correct, total))
 
     return loss_arr, acc_arr

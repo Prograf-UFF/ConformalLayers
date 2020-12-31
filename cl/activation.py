@@ -1,4 +1,3 @@
-from .decorator import singleton
 from .extension import SparseTensor
 from .module import ConformalModule
 from .utils import SizeAny

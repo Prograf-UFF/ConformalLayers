@@ -1,4 +1,3 @@
-from .decorator import singleton
 from abc import ABC, abstractmethod
 from collections import OrderedDict
 from typing import Callable, Iterable, Optional, Union

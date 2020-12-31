@@ -1,47 +1,14 @@
 from .activation import BaseActivation, NoActivation, SRePro
-from .decorator import sync, singleton
 from .extension import IdentityMatrix, SparseTensor, ZeroTensor
 from .module import ConformalModule
 from .utils import SizeAny, ravel_multi_index, unravel_index
 from collections import OrderedDict
 from typing import Iterator, List, Tuple, Union
 import MinkowskiEngine as me
-import numpy, operator, threading, torch
+import numpy, operator, threading, torch, types
 
 
 CachedSignature = Tuple[Tuple[int, SizeAny], Tuple[int, SizeAny], torch.dtype, str]  # Format: ((in_channels, in_volume), (out_channels, out_volume), dtype, device_str)
-
-
-@singleton
-class EyeFactory(object):
-    _Lock = threading.Lock()
-
-    @sync(_Lock)
-    def __init__(self) -> None:
-        self._cache = dict()
-
-    @sync(_Lock)
-    def clear_cache(self):
-        self._cache.clear()
-
-    @sync(_Lock)
-    def get(self, in_channels: int, in_volume: SizeAny, device: torch.device) -> me.SparseTensor:
-        key = (in_channels, in_volume, str(device))
-        eye = self._cache.get(key)
-        if eye is None:
-            in_entries = numpy.prod(in_volume)
-            in_numel = in_channels * in_entries
-            coords = torch.stack(torch.meshgrid(*map(lambda end: torch.arange(int(end), dtype=torch.int32, device='cpu'), (in_channels, *in_volume))), dim=-1).view(-1, 1 + len(in_volume))
-            coords[:, 0] = torch.arange(len(coords), dtype=torch.int32, device='cpu')
-            feats = torch.zeros(in_numel, in_channels, device=device)
-            for channel in range(in_channels):
-                feats[channel*in_entries:(channel+1)*in_entries, channel] = 1
-            eye = me.SparseTensor(feats, coords)
-            #TODO self._cache[key] = eye
-        return eye
-
-
-EYE_FACTORY = EyeFactory()
 
 
 class ConformalLayers(torch.nn.Module):
@@ -65,7 +32,6 @@ class ConformalLayers(torch.nn.Module):
             self._sequentials.append(torch.nn.Sequential(*map(lambda module: module.native, self._modulez[start:])))
             self._activations.append(NoActivation())
         # Initialize cached data with null values
-        self._valid_cache = False
         self._cached_signature: CachedSignature = None
         self._cached_matrix: Union[SparseTensor, IdentityMatrix] = None  # Euclidean space matrix
         self._cached_matrix_extra: torch.Tensor = None  # Homogeneous coordinates scalar
@@ -87,10 +53,19 @@ class ConformalLayers(torch.nn.Module):
         return f'{self.__class__.__name__}( ¯\_(ツ)_/¯ )'
 
     def _compute_torch_module_matrix(self, in_channels: int, in_volume: SizeAny, out_channels: int, out_volume: SizeAny, module: torch.nn.Module, device: torch.device) -> SparseTensor:
-        in_numel = in_channels * numpy.prod(in_volume)
+        in_entries = numpy.prod(in_volume)
+        in_numel = in_channels * in_entries
         out_numel = out_channels * numpy.prod(out_volume)
-        eye = EYE_FACTORY.get(in_channels, in_volume, device)
+        # Make the eye tensor as a me.SparseTensor
+        coords = torch.stack(torch.meshgrid(*map(lambda end: torch.arange(int(end), dtype=torch.int32, device='cpu'), (in_channels, *in_volume))), dim=-1).view(-1, 1 + len(in_volume))
+        coords[:, 0] = torch.arange(len(coords), dtype=torch.int32, device='cpu')
+        feats = torch.zeros(in_numel, in_channels, device=device)
+        for channel in range(in_channels):
+            feats[channel*in_entries:(channel+1)*in_entries, channel] = 1
+        eye = me.SparseTensor(feats, coords)
+        # Apply the sequential module to the eye tensor
         tensor = module(eye)
+        # Make a custom sparse tensor from the resulting me.SparseTensor
         coords = tensor.coords.view(-1, 1 + len(out_volume), 1).expand(-1, -1, out_channels).permute(0, 2, 1)
         coords = torch.cat((coords, torch.empty((len(coords), out_channels, 1), dtype=torch.int32, device=coords.device)), 2)
         for channel in range(out_channels):
@@ -102,9 +77,9 @@ class ConformalLayers(torch.nn.Module):
 
     def _update_cache(self, in_channels: int, in_volume: SizeAny, dtype: torch.dtype, device: torch.device) -> CachedSignature:
         in_signature = (in_channels, in_volume)
-        if not self._valid_cache or self._cached_signature[0] != in_signature or self._cached_signature[2] != dtype or self._cached_signature[3] != str(device):
-            in_numel = in_channels * numpy.prod(in_volume)
+        if self._cached_signature is None or self._cached_signature[0] != in_signature or self._cached_signature[2] != dtype or self._cached_signature[3] != str(device):
             # Compute the tensor representation of operatons in each layer
+            in_numel = in_channels * numpy.prod(in_volume)
             out_channels, out_volume = in_channels, in_volume
             if self.nlayers > 0:
                 tensors = [None] * self.nlayers
@@ -139,15 +114,29 @@ class ConformalLayers(torch.nn.Module):
                 self._cached_matrix = cached_matrix
                 self._cached_matrix_extra = cached_matrix_extra
                 self._cached_tensor_extra = cached_tensor_extra
+                # Ensure that the grad of non-leaf tensors will be retained
+                if not isinstance(self._cached_matrix, IdentityMatrix) and self._cached_matrix.values.requires_grad:
+                    self._cached_matrix.values.retain_grad()
+                if self._cached_matrix_extra.requires_grad:
+                    self._cached_matrix_extra.retain_grad()
+                if not isinstance(self._cached_tensor_extra, ZeroTensor) and self._cached_tensor_extra.values.requires_grad:
+                    self._cached_tensor_extra.values.retain_grad()
             else:
                 self._cached_matrix = IdentityMatrix(in_numel, dtype=dtype, device=device)
                 self._cached_matrix_extra = torch.as_tensor(1, dtype=dtype, device=device)
                 self._cached_tensor_extra = ZeroTensor((in_numel, in_numel), dtype=dtype, device=device)
             # Set cached data as valid
-            self._valid_cache = True
             self._cached_signature = (in_signature, (out_channels, out_volume), dtype, str(device))
         return self._cached_signature
 
+    def cached_tensors(self) -> Iterator[torch.Tensor]:
+        if self._cached_matrix is not None and not isinstance(self._cached_matrix, IdentityMatrix):
+            yield self._cached_matrix.values
+        if self._cached_matrix_extra is not None:
+            yield self._cached_matrix_extra
+        if self._cached_tensor_extra is not None and not isinstance(self._cached_tensor_extra, ZeroTensor):
+            yield self._cached_tensor_extra.values
+    
     def forward(self, input: torch.Tensor):
         batches, in_channels, *in_volume = input.shape
         # If necessary, update cached data
@@ -164,7 +153,7 @@ class ConformalLayers(torch.nn.Module):
         return output_as_matrix.t().view(batches, out_channels, *out_volume)
 
     def invalidate_cache(self) -> None:
-        self._valid_cache = False
+        self._cached_signature = None
 
     @property
     def cached_signature(self) -> CachedSignature:
@@ -176,4 +165,4 @@ class ConformalLayers(torch.nn.Module):
 
     @property
     def valid_cache(self) -> bool:
-        return self._valid_cache
+        return self._cached_signature is not None

@@ -5,7 +5,14 @@ except ModuleNotFoundError:
     sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
     import cl
 
-import torch
+import warnings, torch
+
+
+DEVICE = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
+if DEVICE.type == 'cuda':
+    torch.cuda.set_device(DEVICE)
+else:
+    warnings.warn('The device was set to CPU.', RuntimeWarning)
 
 # Device to run the workload
 DEVICE = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
