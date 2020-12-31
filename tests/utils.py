@@ -6,7 +6,15 @@ except ModuleNotFoundError:
     import cl
 
 from typing import Tuple
-import time, torch
+import time, torch, warnings
+
+
+DEVICE = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
+if DEVICE.type == 'cuda':
+    torch.cuda.set_device(DEVICE)
+else:
+    warnings.warn('The device was set to CPU.', RuntimeWarning)
+
 
 class NativeNet(object):
     def __init__(self, *native_modules: torch.nn.Module):
@@ -116,9 +124,11 @@ def unit_test(batches: int, in_channels: int, in_volume: Tuple[int, ...], *nativ
     tol = 1e-6
     # Bind native net and Conformal Layer-based net
     native_net = NativeNet(*native_modules)
+    native_net.modules.to(DEVICE)
     cl_net = CLNet(*native_modules)
+    cl_net.modules.to(DEVICE)
     # Create input data
-    input = torch.rand(batches, in_channels, *in_volume)
+    input = torch.rand(batches, in_channels, *in_volume).to(DEVICE)
     # Compute resulting data
     unit_input = input / input.view(batches, -1).norm(dim=1).view(batches, *torch.ones((len(in_volume) + 1,), dtype=torch.int32))
     start_time = time.time()

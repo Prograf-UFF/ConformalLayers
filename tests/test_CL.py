@@ -5,14 +5,21 @@ except ModuleNotFoundError:
     sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
     import cl
 
-import torch
+import warnings, torch
+
+
+DEVICE = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
+if DEVICE.type == 'cuda':
+    torch.cuda.set_device(DEVICE)
+else:
+    warnings.warn('The device was set to CPU.', RuntimeWarning)
 
 
 def main():
     tol = 1e-6
     print('--- START CL')
     # Input data
-    input = torch.as_tensor([[[76, 29, 21, -61, 15, -6, -16, -26, 54, 53, -38, -14, -19, -85, 99, 38, -48, 25, -89, 8]]], dtype=torch.float32)
+    input = torch.as_tensor([[[76, 29, 21, -61, 15, -6, -16, -26, 54, 53, -38, -14, -19, -85, 99, 38, -48, 25, -89, 8]]], dtype=torch.float32, device=DEVICE)
     # Layers
     layers = [
         # Layer 1
@@ -40,7 +47,7 @@ def main():
         modules = []
         for l in range(k):
             modules += layers[l]
-        net = cl.ConformalLayers(*modules)
+        net = cl.ConformalLayers(*modules).to(DEVICE)
         output = net(input)
         if torch.max(torch.abs(expected[k-1] - output)) > tol:
             raise RuntimeError(f'expected = {expected[k-1]}\n  output = {output}')
