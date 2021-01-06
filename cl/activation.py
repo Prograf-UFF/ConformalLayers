@@ -32,7 +32,7 @@ class SRePro(BaseActivation):
                  alpha: Optional[float]=None,
                  *, name: Optional[str]=None) -> None:
         super(SRePro, self).__init__(name=name)
-        self._alpha = alpha if alpha is not None else None
+        self._alpha = alpha
 
     def _repr_dict(self) -> OrderedDict:
         entries = super()._repr_dict()

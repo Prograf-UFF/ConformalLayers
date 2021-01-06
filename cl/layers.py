@@ -34,7 +34,7 @@ class ConformalLayers(torch.nn.Module):
         # Initialize cached data with null values
         self._cached_signature: CachedSignature = None
         self._cached_matrix: Union[SparseTensor, IdentityMatrix] = None  # Euclidean space matrix
-        self._cached_matrix_extra: torch.Tensor = None  # Homogeneous coordinates scalar
+        self._cached_matrix_extra: torch.Tensor = None  # Homogeneous coordinate scalar
         self._cached_tensor_extra: Union[SparseTensor, ZeroTensor] = None  # The Euclidean space matrix at the last slice of the rank-3 tensor
 
     def __getitem__(self, index: int) -> ConformalModule:
@@ -52,20 +52,8 @@ class ConformalLayers(torch.nn.Module):
             return f'{self.__class__.__name__}(\n    {modules_str})'
         return f'{self.__class__.__name__}( ¯\_(ツ)_/¯ )'
 
-    def _compute_torch_module_matrix(self, in_channels: int, in_volume: SizeAny, out_channels: int, out_volume: SizeAny, module: torch.nn.Module, device: torch.device) -> SparseTensor:
-        in_entries = numpy.prod(in_volume)
-        in_numel = in_channels * in_entries
+    def _from_minkowski_tensor_to_custom_matrix(self, tensor: me.SparseTensor, in_numel: int, out_channels: int, out_volume: SizeAny) -> SparseTensor:
         out_numel = out_channels * numpy.prod(out_volume)
-        # Make the eye tensor as a me.SparseTensor
-        coords = torch.stack(torch.meshgrid(*map(lambda end: torch.arange(int(end), dtype=torch.int32, device='cpu'), (in_channels, *in_volume))), dim=-1).view(-1, 1 + len(in_volume))
-        coords[:, 0] = torch.arange(len(coords), dtype=torch.int32, device='cpu')
-        feats = torch.zeros(in_numel, in_channels, device=device)
-        for channel in range(in_channels):
-            feats[channel*in_entries:(channel+1)*in_entries, channel] = 1
-        eye = me.SparseTensor(feats, coords)
-        # Apply the sequential module to the eye tensor
-        tensor = module(eye)
-        # Make a custom sparse tensor from the resulting me.SparseTensor
         coords = tensor.coords.view(-1, 1 + len(out_volume), 1).expand(-1, -1, out_channels).permute(0, 2, 1)
         coords = torch.cat((coords, torch.empty((len(coords), out_channels, 1), dtype=torch.int32, device=coords.device)), 2)
         for channel in range(out_channels):
@@ -75,6 +63,16 @@ class ConformalLayers(torch.nn.Module):
         values = tensor.feats.view(-1)
         return SparseTensor(torch.stack((col, row,)), values, (out_numel, in_numel), coalesced=False)
 
+    def _make_eye(self, in_channels: int, in_volume: SizeAny, device: torch.device) -> me.SparseTensor:
+        in_entries = numpy.prod(in_volume)
+        in_numel = in_channels * in_entries
+        coords = torch.stack(torch.meshgrid(*map(lambda end: torch.arange(int(end), dtype=torch.int32, device='cpu'), (in_channels, *in_volume))), dim=-1).view(-1, 1 + len(in_volume))
+        coords[:, 0] = torch.arange(len(coords), dtype=torch.int32, device='cpu')
+        feats = torch.zeros(in_numel, in_channels, device=device)
+        for channel in range(in_channels):
+            feats[channel*in_entries:(channel+1)*in_entries, channel] = 1
+        return me.SparseTensor(feats, coords)
+    
     def _update_cache(self, in_channels: int, in_volume: SizeAny, dtype: torch.dtype, device: torch.device) -> CachedSignature:
         in_signature = (in_channels, in_volume)
         if self._cached_signature is None or self._cached_signature[0] != in_signature or self._cached_signature[2] != dtype or self._cached_signature[3] != str(device):
@@ -82,36 +80,36 @@ class ConformalLayers(torch.nn.Module):
             in_numel = in_channels * numpy.prod(in_volume)
             out_channels, out_volume = in_channels, in_volume
             if self.nlayers > 0:
-                tensors = [None] * self.nlayers
+                # Compute the Euclidean portion of the product U^{layer} . ... . U^{2} . U^{1} and the scalar values of the activation functions for all values of 'layers'
+                stored_layer_values: List[Tuple[SparseTensor, torch.Tensor, torch.Tensor]] = [None] * self.nlayers
+                sequential_matrix_prod_me = self._make_eye(in_channels, in_volume, device)
                 for layer, (sequential, activation) in enumerate(zip(self._sequentials, self._activations)):
-                    # Compute the number of channels and volume of the resulting batch entries
+                    # Compute the eye tensor for the current layer, except for the first one
+                    eye = self._make_eye(out_channels, out_volume, device) if layer > 0 else sequential_matrix_prod_me  # Recall that at this point out_channels == in_channels and out_volume == in_volume for this layer
+                    # Compute the number of channels and volume of the output of this layer
                     for module in sequential:
                         out_channels, out_volume = module.output_size(out_channels, out_volume)
-                    # Make tensor representations of the operations in the current layer
-                    sequential_matrix = self._compute_torch_module_matrix(in_channels, in_volume, out_channels, out_volume, sequential, device)
-                    activation_matrix_scalar, activation_tensor_scalar = activation.to_tensor(sequential_matrix)
-                    tensors[layer] = (sequential_matrix, activation_matrix_scalar, activation_tensor_scalar)
-                    # Get ready for the next layer
-                    in_channels, in_volume = out_channels, out_volume
-                # Compute the backward cummulative product activation matrices
-                backward_prod_matrix_extra = torch.as_tensor(1, dtype=dtype, device=device)
-                backward_prod_matrices_extra = [None] * self.nlayers
-                backward_prod_matrices_extra[self.nlayers - 1] = backward_prod_matrix_extra
-                for layer, (sequential_matrix, activation_matrix_scalar, _) in zip(range(self.nlayers - 2, -1, -1), tensors[-1:-self.nlayers:-1]):
-                    backward_prod_matrix_extra = backward_prod_matrix_extra * activation_matrix_scalar
-                    backward_prod_matrices_extra[layer] = backward_prod_matrix_extra
-                # Compute the final matrix and the final tensor encoding the Conformal Layers
-                sequential_matrix, activation_matrix_scalar, _ = tensors[0]
-                cached_matrix = IdentityMatrix(in_numel, dtype=dtype, device=device)
-                cached_matrix_extra = backward_prod_matrix_extra * activation_matrix_scalar
+                    # Compute the sparse Minkowski tensor and the custom sparse matrix (tensor) representation of the Euclidean portion o sequential matrix U^{layer}
+                    sequential_matrix_me: me.SparseTensor = sequential(eye)
+                    sequential_matrix = self._from_minkowski_tensor_to_custom_matrix(sequential_matrix_me, len(eye.coords), out_channels, out_volume)
+                    # Compute the scalar values used to define the activation matrix M^{layer} and the activation rank-3 tensor T^{layer}
+                    activation_matrix_scalar, activation_tensor_scalar = activation.to_tensor(sequential_matrix)  #TODO Existe uma multiplicação de matrizes esparsas aqui dentro
+                    # Compute the sparse Minkowski tensor and the custom sparse matrix (tensor) representation of the Euclidean portion of the matrix product U^{layer} . ... . U^{2} . U^{1}
+                    sequential_matrix_prod_me: me.SparseTensor = sequential(sequential_matrix_prod_me)
+                    sequential_matrix_prod = self._from_minkowski_tensor_to_custom_matrix(sequential_matrix_prod_me, in_numel, out_channels, out_volume)
+                    # Store computed values
+                    stored_layer_values[layer] = sequential_matrix_prod, activation_matrix_scalar, activation_tensor_scalar
+                # Use the stored layer values to compute the extra component of cached matrix and the extra slice of the cached tensor
+                cached_matrix_extra = torch.as_tensor(1, dtype=dtype, device=device)
                 cached_tensor_extra = ZeroTensor((in_numel, in_numel), dtype=dtype, device=device)
-                for backward_prod_matrix_extra, (sequential_matrix, _, activation_tensor_scalar) in zip(backward_prod_matrices_extra, tensors):
-                    cached_matrix = torch.mm(sequential_matrix, cached_matrix)
+                for sequential_matrix_prod, activation_matrix_scalar, activation_tensor_scalar in reversed(stored_layer_values):
                     if activation_tensor_scalar is not None:
-                        current_extra = torch.mm(cached_matrix.t(), cached_matrix)
-                        current_extra = torch.mul(current_extra, backward_prod_matrix_extra * activation_tensor_scalar)
-                        cached_tensor_extra = torch.add(cached_tensor_extra, current_extra)
-                self._cached_matrix = cached_matrix
+                        current_tensor_extra = torch.mm(sequential_matrix_prod.t(), sequential_matrix_prod) #TODO Multiplicação de matrizes esparsas
+                        current_tensor_extra = torch.mul(current_tensor_extra, cached_matrix_extra * activation_tensor_scalar)
+                        cached_tensor_extra = torch.add(cached_tensor_extra, current_tensor_extra)
+                    cached_matrix_extra = cached_matrix_extra * activation_matrix_scalar
+                # Set the final matrix and the final tensor encoding the Conformal Layers
+                self._cached_matrix = stored_layer_values[-1][0]
                 self._cached_matrix_extra = cached_matrix_extra
                 self._cached_tensor_extra = cached_tensor_extra
                 # Ensure that the grad of non-leaf tensors will be retained

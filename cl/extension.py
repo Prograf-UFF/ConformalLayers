@@ -26,9 +26,7 @@ class CustomTensor(ABC):
         entries_str = ',\n    '.join(map(lambda pair: '{}={}'.format(*pair), self._repr_dict().items()))
         return f'{self.__class__.__name__}(\n    {entries_str})'
 
-    def __torch_function__(self, func, types, args=(), kwargs=None):
-        if kwargs is None:
-            kwargs = {}
+    def __torch_function__(self, func, types, args=(), kwargs={}):
         if func not in HANDLED_FUNCTIONS:
             return NotImplemented
         return HANDLED_FUNCTIONS[func](*args, **kwargs)
@@ -44,10 +42,6 @@ class CustomTensor(ABC):
     def add(self, other: Union[torch.Tensor, 'CustomTensor']) -> Union[torch.Tensor, 'CustomTensor']:
         return torch.add(self, other)
 
-    @abstractmethod
-    def copy_(self, scr: 'CustomTensor') -> 'CustomTensor':
-        pass
-    
     def dim(self) -> int:
         return len(self._size)
 
@@ -57,10 +51,6 @@ class CustomTensor(ABC):
     def numel(self) -> int:
         return numpy.prod(self.shape)
     
-    @abstractmethod
-    def permute(self, *dims: int) -> 'CustomTensor':
-        pass
-
     def size(self) -> torch.Size:
         return self._size
 
@@ -105,21 +95,6 @@ class IdentityMatrix(CustomTensor):
         super(IdentityMatrix, self).__init__((size, size))
         self._dtype = dtype
         self._device = device
-
-    def copy_(self, src: 'IdentityMatrix') -> 'IdentityMatrix':
-        if isinstance(scr, IdentityMatrix) and self.shape == scr.shape:
-            return self
-        raise RuntimeError('copy_() expects a src IdentityMatrix object with the same size as self.')
-
-    def permute(self, *dims: int) -> 'IdentityMatrix':
-        dims = numpy.asarray(dims)
-        if self.ndim != len(dims):
-            raise ValueError('Number of dims don''t match in permute.')
-        if self.ndim != len(numpy.unique(dims)):
-            raise ValueError('Repeated dim in permute.')
-        if numpy.any(dims < -self.ndim) or numpy.any(self.ndim <= dims):
-            raise ValueError('Dimension out of range.')
-        return self
 
     def t(self) -> 'IdentityMatrix':
         return self
@@ -167,25 +142,6 @@ class SparseTensor(CustomTensor):
             self._indices, self._values = torch_sparse.coalesce(self._indices, self._values, self.shape[0], self.shape[1])
             self._coalesced = True
 
-    def copy_(self, src: CustomTensor) -> 'SparseTensor':
-        if isinstance(scr, IdentityMatrix): #TODO Lidar com broadcast
-            raise NotImplementedError() #TODO Implementar
-        elif isinstance(scr, SparseTensor):
-            raise NotImplementedError() #TODO Implementar
-        elif isinstance(scr, ZeroTensor):
-            raise NotImplementedError() #TODO Implementar
-        raise RuntimeError('copy_() expects a src CustomTensor object broadcastable with self.')
-
-    def permute(self, *dims: int) -> 'SparseTensor':
-        dims = numpy.asarray(dims)
-        if self.ndim != len(dims):
-            raise ValueError('Number of dims don''t match in permute.')
-        if self.ndim != len(numpy.unique(dims)):
-            raise ValueError('Repeated dim in permute.')
-        if numpy.any(dims < -self.ndim) or numpy.any(self.ndim <= dims):
-            raise ValueError('Dimension out of range.')
-        return SparseTensor(self.indices[dims], self.values, (self.shape[dim] for dim in dims), coalesced=False)
-
     def t(self) -> 'SparseTensor':
         if self.ndim == 2:
             return SparseTensor(self.indices[[1, 0]], self.values, (self.shape[1], self.shape[0]), coalesced=False)
@@ -228,21 +184,6 @@ class ZeroTensor(CustomTensor):
         self._dtype = dtype
         self._device = device
 
-    def copy_(self, scr: 'ZeroTensor') -> 'ZeroTensor':
-        if isinstance(scr, ZeroTensor): #TODO Lidar com broadcast
-            return self
-        raise RuntimeError('copy_() expects a src ZeroTensor object broadcastable with self.')
-
-    def permute(self, *dims: int) -> 'ZeroTensor':
-        dims = numpy.asarray(dims)
-        if self.ndim != len(dims):
-            raise ValueError('Number of dims don''t match in permute.')
-        if self.ndim != len(numpy.unique(dims)):
-            raise ValueError('Repeated dim in permute.')
-        if numpy.any(dims < -self.ndim) or numpy.any(self.ndim <= dims):
-            raise ValueError('Dimension out of range.')
-        return ZeroTensor((self.shape[dim] for dim in dims), dtype=self.dtype, device=self.device)
-
     def t(self) -> 'ZeroTensor':
         if self.ndim == 2:
             return ZeroTensor((self.shape[1], self.shape[0]), dtype=self.dtype, device=self.device)
@@ -282,38 +223,38 @@ class ZeroTensor(CustomTensor):
 
 
 @implements(torch.add)
-def _add(lhs: Union[torch.Tensor, CustomTensor], rhs: Union[torch.Tensor, CustomTensor], *, out: Optional[Union[torch.Tensor, CustomTensor]]=None) -> Union[torch.Tensor, CustomTensor]:
+def _add(lhs: Union[torch.Tensor, CustomTensor], rhs: Union[torch.Tensor, CustomTensor]) -> Union[torch.Tensor, CustomTensor]:
     lsize, rsize = lhs.shape, rhs.shape
     if (lhs.ndim <= rhs.ndim and lsize != rsize[-lhs.ndim:]) or (lhs.ndim > rhs.ndim and lsize[-rhs.ndim:] != rsize):
         raise ValueError('Shape mismatch.')
     if isinstance(lhs, IdentityMatrix):
         if isinstance(rhs, IdentityMatrix):
             ind = numpy.arange(lsize[0], dtype=numpy.int64)
-            return _try_copy(SparseTensor((ind, ind), torch.fill((lsize[0],), 2, dtype=lhs.dtype, device=lhs.device), lsize, coalesced=True), out)
+            return SparseTensor((ind, ind), torch.fill((lsize[0],), 2, dtype=lhs.dtype, device=lhs.device), lsize, coalesced=True)
         elif isinstance(rhs, SparseTensor):
             ind = numpy.arange(lsize[0], dtype=numpy.int64)
-            return _try_copy(SparseTensor(torch.cat((rhs.indices, torch.as_tensor((ind, ind), dtype=torch.int64, device=rhs.device)), 1), torch.cat((rhs.values, torch.ones((lsize[0],), dtype=rhs.dtype, device=rhs.device)), 0), lsize, coalesced=False), out) #TODO Lidar com broadcast
+            return SparseTensor(torch.cat((rhs.indices, torch.as_tensor((ind, ind), dtype=torch.int64, device=rhs.device)), 1), torch.cat((rhs.values, torch.ones((lsize[0],), dtype=rhs.dtype, device=rhs.device)), 0), lsize, coalesced=False) #TODO Lidar com broadcast
         elif isinstance(rhs, ZeroTensor):
-            return _try_copy(lhs, out) #TODO Lidar com broadcast
+            return lhs #TODO Lidar com broadcast
         elif isinstance(rhs, torch.Tensor):
-            return torch.add(rhs, lhs.to_native(), out=out) #TODO autograd implementado?
+            return torch.add(rhs, lhs.to_native())
     elif isinstance(lhs, SparseTensor):
         if isinstance(rhs, IdentityMatrix):
             ind = numpy.arange(rsize[0], dtype=numpy.int64)
-            return _try_copy(SparseTensor(torch.cat((lhs.indices, torch.as_tensor((ind, ind), dtype=torch.int64, device=lhs.device)), 1), torch.cat((lhs.values, torch.ones((rsize[0],), dtype=lhs.dtype, device=lhs.device)), 0), lsize, coalesced=False), out) #TODO Lidar com broadcast
+            return SparseTensor(torch.cat((lhs.indices, torch.as_tensor((ind, ind), dtype=torch.int64, device=lhs.device)), 1), torch.cat((lhs.values, torch.ones((rsize[0],), dtype=lhs.dtype, device=lhs.device)), 0), lsize, coalesced=False) #TODO Lidar com broadcast
         elif isinstance(rhs, SparseTensor):
-            return _try_copy(SparseTensor(torch.cat((lhs.indices, rhs.indices), 1), torch.cat((lhs.values, rhs.values), 0), lsize, coalesced=False), out) #TODO Lidar com broadcast
+            return SparseTensor(torch.cat((lhs.indices, rhs.indices), 1), torch.cat((lhs.values, rhs.values), 0), lsize, coalesced=False) #TODO Lidar com broadcast
         elif isinstance(rhs, ZeroTensor):
-            return _try_copy(lhs, out) #TODO Lidar com broadcast
+            return lhs #TODO Lidar com broadcast
         elif isinstance(rhs, torch.Tensor):
-            return torch.add(rhs, lhs.to_native(), out=out) #TODO autograd implementado?
+            return torch.add(rhs, lhs.to_native())
     elif isinstance(lhs, ZeroTensor):
-        return _try_copy(rhs, out) #TODO Lidar com broadcast
+        return rhs #TODO Lidar com broadcast
     elif isinstance(lhs, torch.Tensor):
         if isinstance(rhs, (IdentityMatrix, SparseTensor)):
-            return torch.add(lhs, rhs.to_native(), out=out) #TODO autograd implementado?
+            return torch.add(lhs, rhs.to_native())
         elif isinstance(rhs, ZeroTensor):
-            return _try_copy(lhs, out) #TODO Lidar com broadcast
+            return lhs #TODO Lidar com broadcast
     raise NotImplementedError()
 
 
@@ -331,12 +272,11 @@ def _mm(lhs: Union[torch.Tensor, CustomTensor], rhs: Union[torch.Tensor, CustomT
         elif isinstance(rhs, SparseTensor):
             lhs.coalesce()
             rhs.coalesce()
-            indices, values = torch_sparse.spspmm(lhs.indices, lhs.values, rhs.indices, rhs.values, lhs.shape[0], lhs.shape[1], rhs.shape[1], coalesced=True)
+            indices, values = torch_sparse.spspmm(lhs.indices, lhs.values, rhs.indices, rhs.values, lhs.shape[0], lhs.shape[1], rhs.shape[1], coalesced=False)
             return SparseTensor(indices, values, (lhs.shape[0], rhs.shape[1]), coalesced=True)
         elif isinstance(rhs, ZeroTensor):
             return ZeroTensor((lhs.shape[0], rhs.shape[1]), dtype=lhs.dtype, device=lhs.dtype)
         elif isinstance(rhs, torch.Tensor):
-            lhs.coalesce()
             return torch_sparse.spmm(lhs.indices, lhs.values, lhs.shape[0], lhs.shape[1], rhs)
     elif isinstance(lhs, ZeroTensor):
         return ZeroTensor((lhs.shape[0], rhs.shape[1]), dtype=rhs.dtype, device=rhs.device)
@@ -344,52 +284,34 @@ def _mm(lhs: Union[torch.Tensor, CustomTensor], rhs: Union[torch.Tensor, CustomT
         if isinstance(rhs, IdentityMatrix):
             return lhs
         elif isinstance(rhs, SparseTensor):
-            return torch.matmul(lhs, rhs.to_native()) #TODO autograd implementado?
+            raise NotImplementedError()
         elif isinstance(rhs, ZeroTensor):
             return ZeroTensor((lhs.shape[0], rhs.shape[1]), dtype=lhs.dtype, device=lhs.device)
     raise NotImplementedError()
 
 
 @implements(torch.mul)
-def _mul(lhs: Union[torch.Tensor, CustomTensor], rhs: Union[torch.Tensor, CustomTensor], *, out: Optional[Union[torch.Tensor, CustomTensor]]=None) -> Union[torch.Tensor, CustomTensor]:
+def _mul(lhs: Union[torch.Tensor, CustomTensor], rhs: Union[torch.Tensor, CustomTensor]) -> Union[torch.Tensor, CustomTensor]:
     if lhs.ndim == 0:
         if isinstance(lhs, ZeroTensor):
-            return _try_copy(ZeroTensor(rhs.shape, dtype=rhs.dtype, device=rhs.device), out)
+            return ZeroTensor(rhs.shape, dtype=rhs.dtype, device=rhs.device)
         elif isinstance(lhs, torch.Tensor):
             if isinstance(rhs, IdentityMatrix):
                 ind = torch.arange(rhs.shape[0], dtype=numpy.int64, device=lhs.device)
-                return _try_copy(SparseTensor(torch.stack((ind, ind,)), lhs.expand(rhs.shape[0], 1), size=rhs.shape), out)
+                return SparseTensor(torch.stack((ind, ind,)), lhs.expand(rhs.shape[0], 1), size=rhs.shape)
             elif isinstance(rhs, SparseTensor):
-                rhs.coalesce()
-                return _try_copy(SparseTensor(rhs.indices, torch.mul(lhs, rhs.values), rhs.shape, coalesced=True), out)
+                return SparseTensor(rhs.indices, torch.mul(lhs, rhs.values), rhs.shape, coalesced=rhs.coalesced)
             elif isinstance(rhs, ZeroTensor):
-                return _try_copy(rhs, out)
+                return rhs
     elif rhs.ndim == 0:
         if isinstance(rhs, ZeroTensor):
-            return _try_copy(ZeroTensor(lhs.shape, dtype=lhs.dtype, device=lhs.device), out)
+            return ZeroTensor(lhs.shape, dtype=lhs.dtype, device=lhs.device)
         elif isinstance(rhs, torch.Tensor):
             if isinstance(lhs, IdentityMatrix):
                 ind = torch.arange(lhs.shape[0], dtype=numpy.int64, device=rhs.device)
-                return _try_copy(SparseTensor(torch.stack((ind, ind,)), rhs.expand(lhs.shape[0], 1), size=lhs.shape), out)
+                return SparseTensor(torch.stack((ind, ind,)), rhs.expand(lhs.shape[0], 1), size=lhs.shape)
             elif isinstance(lhs, SparseTensor):
-                lhs.coalesce()
-                return _try_copy(SparseTensor(lhs.indices, torch.mul(lhs.values, rhs), lhs.shape, coalesced=True), out)
+                return SparseTensor(lhs.indices, torch.mul(lhs.values, rhs), lhs.shape, coalesced=lhs.coalesced)
             elif isinstance(lhs, ZeroTensor):
-                return _try_copy(lhs, out)
-    else:
-        raise NotImplementedError() #TODO Implementar
-    raise NotImplementedError()
-
-
-def _try_copy(src: Union[torch.Tensor, CustomTensor], dst: Union[torch.Tensor, CustomTensor]) -> Union[torch.Tensor, CustomTensor]:
-    if dst is None:
-        return src
-    if isinstance(src, CustomTensor):
-        if isinstance(dst, CustomTensor):
-            return dst.copy_(src)
-        elif isinstance(dst, torch.Tensor):
-            return dst.copy_(src.to_native())
-    elif isinstance(src, torch.Tensor):
-        if isinstance(dst, torch.Tensor):
-            return dst.copy_(src)
+                return lhs
     raise NotImplementedError()
