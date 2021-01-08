@@ -94,7 +94,7 @@ class ConformalLayers(torch.nn.Module):
                 # Compute the Euclidean portion of the matrix product U^{layer} . ... . U^{2} . U^{1}
                 cached_matrix = torch.mm(sequential_matrix, cached_matrix)   #TODO Multiplicação de matrizes esparsas
                 # Compute the scalar values used to define the activation matrix M^{layer} and the activation rank-3 tensor T^{layer}
-                activation_matrix_scalar, activation_tensor_scalar = activation.to_tensor(sequential_matrix)  #TODO Existe uma multiplicação de matrizes esparsas aqui dentro
+                activation_matrix_scalar, activation_tensor_scalar = activation.to_tensor(sequential_matrix)
                 # Store computed values
                 stored_layer_values[layer] = cached_matrix, activation_matrix_scalar, activation_tensor_scalar
             # Use the stored layer values to compute the extra component of cached matrix and the extra slice of the cached tensor
@@ -109,13 +109,13 @@ class ConformalLayers(torch.nn.Module):
             self._cached_matrix = cached_matrix
             self._cached_matrix_extra = cached_matrix_extra
             self._cached_tensor_extra = cached_tensor_extra
-            # Ensure that the grad of non-leaf tensors will be retained
-            if not isinstance(self._cached_matrix, IdentityMatrix) and self._cached_matrix.values.requires_grad:
-                self._cached_matrix.values.retain_grad()
-            if self._cached_matrix_extra.requires_grad:
-                self._cached_matrix_extra.retain_grad()
-            if not isinstance(self._cached_tensor_extra, ZeroTensor) and self._cached_tensor_extra.values.requires_grad:
-                self._cached_tensor_extra.values.retain_grad()
+            ##[ConformalLayers Promise] Ensure that the grad of non-leaf tensors will be retained
+            ##if not isinstance(self._cached_matrix, IdentityMatrix) and self._cached_matrix.values.requires_grad:
+            ##    self._cached_matrix.values.retain_grad()
+            ##if self._cached_matrix_extra.requires_grad:
+            ##    self._cached_matrix_extra.retain_grad()
+            ##if not isinstance(self._cached_tensor_extra, ZeroTensor) and self._cached_tensor_extra.values.requires_grad:
+            ##    self._cached_tensor_extra.values.retain_grad()
             # Set cached data as valid
             self._cached_signature = (in_signature, (out_channels, out_volume), dtype, str(device))
         return self._cached_signature

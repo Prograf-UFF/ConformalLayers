@@ -74,7 +74,9 @@ def get_dataset():
 
 net = Network().to(DEVICE)
 criterion = nn.CrossEntropyLoss()
-optimizer = cl.SGD(net.parameters(), [net.features], lr=0.01, momentum=0.9)  #[ConformalLayers Hint] One has to use an optimizer adapted for the ConformalLayers
+optimizer = torch.optim.SGD(net.parameters(), lr=0.01, momentum=0.9)
+##[ConformalLayers Promise] One has to use an optimizer adapted for the ConformalLayers
+##optimizer = cl.SGD(net.parameters(), [net.features], lr=0.01, momentum=0.9)
 
 trainloader, testloader = get_dataset()
 
@@ -94,11 +96,14 @@ def train(epoch, optimizer):
             loss = criterion(outputs, targets)
 
         with Stopwatch('Train -- Epoch {epoch}, Batch {batch_idx} -- Backward       -- Elapsed time: {et_str}.', {'epoch': epoch, 'batch_idx': batch_idx}):
-            loss.backward(retain_graph=True) #[ConformalLayers Hint] One has to set retain_graph=True while calling loss.backward() to keep the graph used to compute data cached by ConformalLayer objects
+            loss.backward()
+            ##[ConformalLayers Promise] One has to set retain_graph=True while calling loss.backward() to keep the graph used to compute data cached by ConformalLayer objects
+            ##loss.backward(retain_graph=True)
 
         with Stopwatch('Train -- Epoch {epoch}, Batch {batch_idx} -- Optimizer Step -- Elapsed time: {et_str}.', {'epoch': epoch, 'batch_idx': batch_idx}):
             optimizer.step()
-        net.features.invalidate_cache()  #TODO Remover, caso a atualização da cache se mostre correta
+        ##[ConformalLayers Promise] net.features.invalidate_cache() is not needed if optimizer.step() is able to update the data cached by ConformalLayer objects
+        net.features.invalidate_cache()
 
         loss_arr.append(loss.detach().item())
         train_loss += loss_arr[-1]

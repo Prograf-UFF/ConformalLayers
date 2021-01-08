@@ -45,8 +45,12 @@ class SRePro(BaseActivation):
     def to_tensor(self, previous: SparseTensor) -> Tuple[torch.Tensor, torch.Tensor]:
         # Compute the alpha parameter
         if self._alpha is None:
-            symmetric = torch.mm(previous, previous.t())
-            alpha = torch.sqrt(math.sqrt(symmetric.nnz) * symmetric.values.abs().max(0)[0])  # See https://mathoverflow.net/questions/111633/upper-bound-on-largest-eigenvalue-of-a-real-symmetric-nn-matrix-with-all-main-d
+            #symmetric = torch.mm(previous, previous.t())
+            #symmetric.coalesce()
+            #alpha = torch.sqrt(math.sqrt(symmetric.nnz) * symmetric.values.abs().max(0)[0])  # See https://mathoverflow.net/questions/111633/upper-bound-on-largest-eigenvalue-of-a-real-symmetric-nn-matrix-with-all-main-d
+            previous = previous.to_native()
+            min_dim = numpy.argmin(previous.shape)
+            alpha = torch.sqrt(previous.shape[min_dim] * torch.sparse.sum(previous.mul(previous), dim=1-min_dim).values().max())  # See https://doi.org/10.1137/050627812, Theorem 1, Corollary 2, item (ii)
         else:
             alpha = torch.as_tensor(self.alpha, dtype=previous.dtype, device=previous.device)
         # Compute the last coefficient of the matrix

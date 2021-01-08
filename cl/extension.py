@@ -123,12 +123,6 @@ class SparseTensor(CustomTensor):
         self._values = torch.as_tensor(values, device=values.device)
         self._coalesced = coalesced
 
-    def __imul__(self, other: torch.Tensor) -> 'SparseTensor':
-        if other.ndim != 0:
-            raise NotImplementedError()
-        self._values *= other
-        return self
-
     def _repr_dict(self) -> OrderedDict:
         entries = super()._repr_dict()
         entries['indices'] = [*map(lambda arg: tuple(map(int, arg)), self.indices.t())]
