@@ -15,7 +15,6 @@ class WrappedMinkowskiConvolution(MinkowskiOperationWrapper):
         self._function = me.MinkowskiConvolutionFunction()
         self.reset_parameters()
         
-
     def _apply_function(self, input: me.SparseTensor, region_type: me.RegionType, region_offset: torch.IntTensor, out_coords_key: me.CoordsKey) -> torch.Tensor:
         return self._function.apply(input.feats, self.kernel, input.tensor_stride, 1, self.kernel_size, self.dilation, region_type, region_offset, input.coords_key, out_coords_key, input.coords_man)
 
@@ -93,9 +92,6 @@ class ConvNd(ConformalModule):
                 padding=padding,
                 dilation=dilation),
             name=name)
-
-    def _register_parent(self, parent, index: int) -> None:
-        parent._parameterz.append(self.native.kernel)
 
     def _repr_dict(self) -> OrderedDict:
         entries = super()._repr_dict()
@@ -216,9 +212,6 @@ class ConvTransposeNd(ConformalModule):
                 output_padding=output_padding,
                 dilation=dilation),
             name=name)
-
-    def _register_parent(self, parent, index: int) -> None:
-        parent._parameterz.append(self.native.kernel)
 
     def _repr_dict(self) -> OrderedDict:
         entries = super()._repr_dict()

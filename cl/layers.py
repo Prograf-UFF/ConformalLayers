@@ -15,10 +15,7 @@ class ConformalLayers(torch.nn.Module):
     def __init__(self, *args: ConformalModule) -> None:
         super(ConformalLayers, self).__init__()
         # Keep conformal modules as is and track parameter's updates
-        self._modulez: List[ConformalModule] = [*args]
-        self._parameterz = torch.nn.ParameterList()
-        for index, curr in enumerate(self._modulez):
-            curr._register_parent(self, index)
+        self._modulez = torch.nn.ModuleList(args)
         # Break the sequence of operations into Conformal Layers
         start = 0
         self._sequentials: List[torch.nn.Sequential] = list()
@@ -79,50 +76,46 @@ class ConformalLayers(torch.nn.Module):
             # Compute the tensor representation of operatons in each layer
             in_numel = in_channels * numpy.prod(in_volume)
             out_channels, out_volume = in_channels, in_volume
-            if self.nlayers > 0:
-                # Compute the Euclidean portion of the product U^{layer} . ... . U^{2} . U^{1} and the scalar values of the activation functions for all values of 'layers'
-                stored_layer_values: List[Tuple[SparseTensor, torch.Tensor, torch.Tensor]] = [None] * self.nlayers
-                sequential_matrix_prod_me = self._make_eye(in_channels, in_volume, device)
-                for layer, (sequential, activation) in enumerate(zip(self._sequentials, self._activations)):
-                    # Compute the eye tensor for the current layer, except for the first one
-                    eye = self._make_eye(out_channels, out_volume, device) if layer > 0 else sequential_matrix_prod_me  # Recall that at this point out_channels == in_channels and out_volume == in_volume for this layer
-                    # Compute the number of channels and volume of the output of this layer
-                    for module in sequential:
-                        out_channels, out_volume = module.output_size(out_channels, out_volume)
-                    # Compute the sparse Minkowski tensor and the custom sparse matrix (tensor) representation of the Euclidean portion o sequential matrix U^{layer}
-                    sequential_matrix_me: me.SparseTensor = sequential(eye)
-                    sequential_matrix = self._from_minkowski_tensor_to_custom_matrix(sequential_matrix_me, len(eye.coords), out_channels, out_volume)
-                    # Compute the scalar values used to define the activation matrix M^{layer} and the activation rank-3 tensor T^{layer}
-                    activation_matrix_scalar, activation_tensor_scalar = activation.to_tensor(sequential_matrix)  #TODO Existe uma multiplicação de matrizes esparsas aqui dentro
-                    # Compute the sparse Minkowski tensor and the custom sparse matrix (tensor) representation of the Euclidean portion of the matrix product U^{layer} . ... . U^{2} . U^{1}
-                    sequential_matrix_prod_me: me.SparseTensor = sequential(sequential_matrix_prod_me)
-                    sequential_matrix_prod = self._from_minkowski_tensor_to_custom_matrix(sequential_matrix_prod_me, in_numel, out_channels, out_volume)
-                    # Store computed values
-                    stored_layer_values[layer] = sequential_matrix_prod, activation_matrix_scalar, activation_tensor_scalar
-                # Use the stored layer values to compute the extra component of cached matrix and the extra slice of the cached tensor
-                cached_matrix_extra = torch.as_tensor(1, dtype=dtype, device=device)
-                cached_tensor_extra = ZeroTensor((in_numel, in_numel), dtype=dtype, device=device)
-                for sequential_matrix_prod, activation_matrix_scalar, activation_tensor_scalar in reversed(stored_layer_values):
-                    if activation_tensor_scalar is not None:
-                        current_tensor_extra = torch.mm(sequential_matrix_prod.t(), sequential_matrix_prod) #TODO Multiplicação de matrizes esparsas
-                        current_tensor_extra = torch.mul(current_tensor_extra, cached_matrix_extra * activation_tensor_scalar)
-                        cached_tensor_extra = torch.add(cached_tensor_extra, current_tensor_extra)
+            # Initialize the resulting variables
+            cached_matrix = IdentityMatrix(in_numel, dtype=dtype, device=device)
+            cached_matrix_extra = torch.as_tensor(1, dtype=dtype, device=device)
+            cached_tensor_extra = ZeroTensor((in_numel, in_numel), dtype=dtype, device=device)
+            # Compute the Euclidean portion of the product U^{layer} . ... . U^{2} . U^{1} and the scalar values of the activation functions for all values of 'layers'
+            stored_layer_values: List[Tuple[SparseTensor, torch.Tensor, torch.Tensor]] = [None] * self.nlayers
+            for layer, (sequential, activation) in enumerate(zip(self._sequentials, self._activations)):
+                # Compute the eye tensor for the current layer
+                eye = self._make_eye(out_channels, out_volume, device)
+                # Compute the number of channels and volume of the output of this layer
+                for module in sequential:
+                    out_channels, out_volume = module.output_size(out_channels, out_volume)
+                # Compute the sparse Minkowski tensor and the custom sparse matrix (tensor) representation of the Euclidean portion o sequential matrix U^{layer}
+                sequential_matrix_me: me.SparseTensor = sequential(eye)
+                sequential_matrix = self._from_minkowski_tensor_to_custom_matrix(sequential_matrix_me, len(eye.coords), out_channels, out_volume)
+                # Compute the Euclidean portion of the matrix product U^{layer} . ... . U^{2} . U^{1}
+                cached_matrix = torch.mm(sequential_matrix, cached_matrix)   #TODO Multiplicação de matrizes esparsas
+                # Compute the scalar values used to define the activation matrix M^{layer} and the activation rank-3 tensor T^{layer}
+                activation_matrix_scalar, activation_tensor_scalar = activation.to_tensor(sequential_matrix)  #TODO Existe uma multiplicação de matrizes esparsas aqui dentro
+                # Store computed values
+                stored_layer_values[layer] = cached_matrix, activation_matrix_scalar, activation_tensor_scalar
+            # Use the stored layer values to compute the extra component of cached matrix and the extra slice of the cached tensor
+            for sequential_matrix_prod, activation_matrix_scalar, activation_tensor_scalar in reversed(stored_layer_values):
+                if activation_tensor_scalar is not None:
+                    current_tensor_extra = torch.mm(sequential_matrix_prod.t(), sequential_matrix_prod) #TODO Multiplicação de matrizes esparsas
+                    current_tensor_extra = torch.mul(current_tensor_extra, cached_matrix_extra * activation_tensor_scalar)
+                    cached_tensor_extra = torch.add(cached_tensor_extra, current_tensor_extra)
+                if activation_matrix_scalar is not None:
                     cached_matrix_extra = cached_matrix_extra * activation_matrix_scalar
-                # Set the final matrix and the final tensor encoding the Conformal Layers
-                self._cached_matrix = stored_layer_values[-1][0]
-                self._cached_matrix_extra = cached_matrix_extra
-                self._cached_tensor_extra = cached_tensor_extra
-                # Ensure that the grad of non-leaf tensors will be retained
-                if not isinstance(self._cached_matrix, IdentityMatrix) and self._cached_matrix.values.requires_grad:
-                    self._cached_matrix.values.retain_grad()
-                if self._cached_matrix_extra.requires_grad:
-                    self._cached_matrix_extra.retain_grad()
-                if not isinstance(self._cached_tensor_extra, ZeroTensor) and self._cached_tensor_extra.values.requires_grad:
-                    self._cached_tensor_extra.values.retain_grad()
-            else:
-                self._cached_matrix = IdentityMatrix(in_numel, dtype=dtype, device=device)
-                self._cached_matrix_extra = torch.as_tensor(1, dtype=dtype, device=device)
-                self._cached_tensor_extra = ZeroTensor((in_numel, in_numel), dtype=dtype, device=device)
+            # Set the final matrix and the final tensor encoding the Conformal Layers
+            self._cached_matrix = cached_matrix
+            self._cached_matrix_extra = cached_matrix_extra
+            self._cached_tensor_extra = cached_tensor_extra
+            # Ensure that the grad of non-leaf tensors will be retained
+            if not isinstance(self._cached_matrix, IdentityMatrix) and self._cached_matrix.values.requires_grad:
+                self._cached_matrix.values.retain_grad()
+            if self._cached_matrix_extra.requires_grad:
+                self._cached_matrix_extra.retain_grad()
+            if not isinstance(self._cached_tensor_extra, ZeroTensor) and self._cached_tensor_extra.values.requires_grad:
+                self._cached_tensor_extra.values.retain_grad()
             # Set cached data as valid
             self._cached_signature = (in_signature, (out_channels, out_volume), dtype, str(device))
         return self._cached_signature

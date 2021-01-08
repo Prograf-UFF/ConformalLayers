@@ -25,8 +25,13 @@ class Network(nn.Module):
             cl.Conv2d(in_channels=1, out_channels=64, kernel_size=5),
             cl.AvgPool2d(kernel_size=2, stride=2),
             cl.SRePro(),
+            cl.Conv2d(in_channels=64, out_channels=64, kernel_size=3),
+            cl.AvgPool2d(kernel_size=3, stride=3),
+            cl.SRePro(),
+            cl.Conv2d(in_channels=64, out_channels=64, kernel_size=2),
+            cl.SRePro(),
           )
-        self.fc1 = nn.Linear(9216, 10)
+        self.fc1 = nn.Linear(256, 10)
 
     def forward(self, x):
         out = self.features(x)
@@ -37,10 +42,7 @@ class Network(nn.Module):
 
 # Device to run the workload
 DEVICE = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
-if DEVICE.type == 'cuda':
-    torch.cuda.set_device(DEVICE)
-else:
-    warnings.warn('The device was set to CPU.', RuntimeWarning)
+torch.cuda.set_device(DEVICE) if DEVICE.type == 'cuda' else warnings.warn(f'The device was set to {DEVICE}.', RuntimeWarning)
 
 
 # The size of the batch
@@ -106,8 +108,7 @@ def train(epoch, optimizer):
         correct += predicted.eq(targets).sum().item()
         acc_arr.append(correct / total)
 
-        progress_bar(batch_idx, len(trainloader), 'Loss: %.3f | Acc: %.3f%% (%d/%d)\n'
-                    % (train_loss/(batch_idx+1), 100.*correct/total, correct, total))
+        progress_bar(batch_idx, len(trainloader), 'Loss: %.3f | Acc: %.3f%% (%d/%d)\n' % (train_loss/(batch_idx+1), 100.*correct/total, correct, total))
 
     return loss_arr, acc_arr
 
@@ -134,8 +135,7 @@ def test(epoch):
         correct += predicted.eq(targets).sum().item()
         acc_arr.append(correct / total)
 
-        progress_bar(batch_idx, len(testloader), 'Loss: %.3f | Acc: %.3f%% (%d/%d)\n'
-                        % (test_loss/(batch_idx+1), 100.*correct/total, correct, total))
+        progress_bar(batch_idx, len(testloader), 'Loss: %.3f | Acc: %.3f%% (%d/%d)\n' % (test_loss/(batch_idx+1), 100.*correct/total, correct, total))
 
     return loss_arr, acc_arr
 

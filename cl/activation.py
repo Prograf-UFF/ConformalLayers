@@ -13,7 +13,7 @@ class BaseActivation(ConformalModule):
         super(BaseActivation, self).__init__(None, name=name)
 
     @abstractmethod
-    def to_tensor(self, previous: SparseTensor) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+    def to_tensor(self, previous: SparseTensor) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor]]:
         pass
 
 
@@ -21,8 +21,8 @@ class NoActivation(BaseActivation):
     def __init__(self) -> None:
         super(NoActivation, self).__init__()
 
-    def to_tensor(self, previous: SparseTensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        matrix_scalar = torch.as_tensor(1, dtype=previous.dtype, device=previous.device)
+    def to_tensor(self, previous: SparseTensor) -> Tuple[None, None]:
+        matrix_scalar = None
         tensor_scalar = None
         return matrix_scalar, tensor_scalar
 
@@ -46,7 +46,7 @@ class SRePro(BaseActivation):
         # Compute the alpha parameter
         if self._alpha is None:
             symmetric = torch.mm(previous, previous.t())
-            alpha = torch.sqrt(math.sqrt(symmetric.nnz) * symmetric.values.abs().max(0)[0])
+            alpha = torch.sqrt(math.sqrt(symmetric.nnz) * symmetric.values.abs().max(0)[0])  # See https://mathoverflow.net/questions/111633/upper-bound-on-largest-eigenvalue-of-a-real-symmetric-nn-matrix-with-all-main-d
         else:
             alpha = torch.as_tensor(self.alpha, dtype=previous.dtype, device=previous.device)
         # Compute the last coefficient of the matrix

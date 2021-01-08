@@ -94,7 +94,7 @@ class MinkowskiOperationWrapper(NativeModuleWrapper):
         return self._kernel_generator
 
 
-class ConformalModule(ABC):
+class ConformalModule(torch.nn.Module):
     def __init__(self,
                  native: NativeModuleWrapper,
                  *, name: Optional[str]=None) -> None:
@@ -111,8 +111,8 @@ class ConformalModule(ABC):
             entries['name'] = self.name
         return entries
 
-    def _register_parent(self, parent, index: int) -> None:
-        pass
+    def forward(self, input: torch.Tensor):
+        raise RuntimeError('This method should not be called.')
 
     def output_size(self, in_channels: int, in_volume: SizeAny) -> Tuple[int, SizeAny]:
         return self.native.output_size(in_channels, in_volume)
