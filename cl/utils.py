@@ -11,6 +11,10 @@ def NTuple(n: int) -> Union[Iterable[int], Tuple[int, ...]]:
     return parse
 
 
+DenseTensor = torch.Tensor
+ScalarTensor = torch.Tensor
+SparseTensor = torch.Tensor
+
 Single = NTuple(1)
 Pair = NTuple(2)
 Triple = NTuple(3)
@@ -21,14 +25,14 @@ IntOrSize3 = Union[int, Tuple[int, int, int]]
 SizeAny = Tuple[int, ...]
 
 
-def ravel_multi_index(multi_index: Tuple[torch.Tensor, ...], dims: Tuple[int, ...]) -> torch.Tensor:
+def ravel_multi_index(multi_index: Tuple[DenseTensor, ...], dims: Tuple[int, ...]) -> DenseTensor:
     out = multi_index[-1].clone().detach()
     for ind, stride in zip(multi_index[-2::-1], numpy.cumprod(dims[:0:-1])):
         out += ind * stride
     return out
 
 
-def unravel_index(index: torch.Tensor, shape: Tuple[int, ...]) -> Tuple[torch.Tensor, ...]:
+def unravel_index(index: DenseTensor, shape: Tuple[int, ...]) -> Tuple[DenseTensor, ...]:
     out = []
     for dim in reversed(shape):
         out.append(index % dim)

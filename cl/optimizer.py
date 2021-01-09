@@ -1,10 +1,11 @@
 from .layers import ConformalLayers
+from .utils import DenseTensor
 from typing import Iterator, List
-import torch, torch.optim
+import torch
 
 
 class SGD(torch.optim.SGD):
-    def __init__(self, params: Iterator[torch.Tensor], clayers: Iterator[ConformalLayers], *args, **kwargs) -> None:
+    def __init__(self, params: Iterator[DenseTensor], clayers: Iterator[ConformalLayers], *args, **kwargs) -> None:
         super(SGD, self).__init__(params, *args, **kwargs)
         self.param_groups[0]['clayers'] = list(clayers)  # We need a new entry to keep the ConformalLayer objects
 
@@ -18,7 +19,7 @@ class SGD(torch.optim.SGD):
             nesterov = group['nesterov']
 
             for clayers in group['clayers']:  # Instead of update the tensors in group['params'], we update the cached tensors of each ConformalLayer object in group['clayers']
-                for p in clayers.cached_tensors():
+                for p in clayers.cached_data():
                     if p.grad is None:
                         continue
                     d_p = p.grad

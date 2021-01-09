@@ -46,7 +46,7 @@ torch.cuda.set_device(DEVICE) if DEVICE.type == 'cuda' else warnings.warn(f'The 
 
 
 # The size of the batch
-BATCHSIZE = 16
+BATCHSIZE = 32
 
 
 # Sets the seed for reproducibility

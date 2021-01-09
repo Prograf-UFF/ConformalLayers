@@ -1,5 +1,5 @@
 from .module import MinkowskiOperationWrapper, ConformalModule
-from .utils import IntOrSize1, IntOrSize2, IntOrSize3, SizeAny, Pair, Single, Triple
+from .utils import DenseTensor, IntOrSize1, IntOrSize2, IntOrSize3, SizeAny, Pair, Single, Triple
 from collections import OrderedDict
 from typing import Optional, Tuple
 import MinkowskiEngine as me
@@ -12,9 +12,9 @@ class WrappedMinkowskiAvgPooling(MinkowskiOperationWrapper):
         self._inv_cardinality = 1 / int(torch.prod(self.kernel_size))
         self._function = me.MinkowskiAvgPoolingFunction()
 
-    def _apply_function(self, input: me.SparseTensor, region_type: me.RegionType, region_offset: torch.IntTensor, out_coords_key: me.CoordsKey) -> torch.Tensor:
+    def _apply_function(self, input: me.SparseTensor, region_type: me.RegionType, region_offset: torch.IntTensor, out_coords_key: me.CoordsKey) -> DenseTensor:
         out_feats = self._function.apply(input.feats, input.tensor_stride, 1, self.kernel_size, self.dilation, region_type, region_offset, False, input.coords_key, out_coords_key, input.coords_man)
-        out_feats *= self._inv_cardinality
+        out_feats = out_feats * self._inv_cardinality
         return out_feats
 
     def output_size(self, in_channels: int, in_volume: SizeAny) -> Tuple[int, SizeAny]:
@@ -26,7 +26,7 @@ class WrappedMinkowskiSumPooling(MinkowskiOperationWrapper):
         super(WrappedMinkowskiSumPooling, self).__init__(transposed=False, **kwargs)
         self._function = me.MinkowskiAvgPoolingFunction()
 
-    def _apply_function(self, input: me.SparseTensor, region_type: me.RegionType, region_offset: torch.IntTensor, out_coords_key: me.CoordsKey) -> torch.Tensor:
+    def _apply_function(self, input: me.SparseTensor, region_type: me.RegionType, region_offset: torch.IntTensor, out_coords_key: me.CoordsKey) -> DenseTensor:
         return self._function.apply(input.feats, input.tensor_stride, 1, self.kernel_size, self.dilation, region_type, region_offset, False, input.coords_key, out_coords_key, input.coords_man)
 
     def output_size(self, in_channels: int, in_volume: SizeAny) -> Tuple[int, SizeAny]:
