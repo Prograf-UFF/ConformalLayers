@@ -22,14 +22,15 @@ class Network(nn.Module):
     def __init__(self):
         super(Network, self).__init__()
         self.features = cl.ConformalLayers(
-            cl.Conv2d(in_channels=1, out_channels=64, kernel_size=5),
-            cl.AvgPool2d(kernel_size=2, stride=2),
-            cl.SRePro(),
-            cl.Conv2d(in_channels=64, out_channels=64, kernel_size=3),
-            cl.AvgPool2d(kernel_size=3, stride=3),
-            cl.SRePro(),
-            cl.Conv2d(in_channels=64, out_channels=64, kernel_size=2),
-            cl.SRePro(),
+            #cl.Conv2d(in_channels=1, out_channels=64, kernel_size=5),
+            #cl.AvgPool2d(kernel_size=2, stride=2),
+            #cl.SRePro(),
+            cl.Dropout(),
+            #cl.Conv2d(in_channels=64, out_channels=64, kernel_size=3),
+            #cl.AvgPool2d(kernel_size=3, stride=3),
+            #cl.SRePro(),
+            #cl.Conv2d(in_channels=64, out_channels=64, kernel_size=2),
+            #cl.SRePro(),
           )
         self.fc1 = nn.Linear(256, 10)
 

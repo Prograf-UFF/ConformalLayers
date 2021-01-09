@@ -1,13 +1,15 @@
 from .activation import BaseActivation, NoActivation, SRePro
 from .module import ConformalModule
 from .utils import DenseTensor, ScalarTensor, SparseTensor, SizeAny, ravel_multi_index, unravel_index
-from collections import OrderedDict
+from collections import namedtuple, OrderedDict
 from typing import Iterator, List, Tuple, Union
 import MinkowskiEngine as me
 import numpy, operator, threading, torch, types
 
 
-CachedSignature = Tuple[Tuple[int, SizeAny], Tuple[int, SizeAny], torch.dtype, str]  # Format: ((in_channels, in_volume), (out_channels, out_volume), dtype, device_str)
+InSignature = namedtuple('InSignature', ['channels', 'volume', 'dtype', 'device_str'])
+OutSignature = namedtuple('OutSignature', ['channels', 'volume'])
+CachedSignature = namedtuple('CachedSignature', ['in_signature', 'out_signature', 'training'])
 
 
 class ConformalLayers(torch.nn.Module):
@@ -77,8 +79,8 @@ class ConformalLayers(torch.nn.Module):
         return torch.sparse_coo_tensor(torch.empty((2, 0,), dtype=torch.int64, device=device), torch.empty((0,), dtype=dtype, device=device), (size, size), device=device)
 
     def _update_cache(self, in_channels: int, in_volume: SizeAny, dtype: torch.dtype, device: torch.device) -> CachedSignature:
-        in_signature = (in_channels, in_volume)
-        if self._cached_signature is None or self._cached_signature[0] != in_signature or self._cached_signature[2] != dtype or self._cached_signature[3] != str(device):
+        in_signature = InSignature(in_channels, in_volume, dtype, str(device))
+        if self._cached_signature is None or self._cached_signature.in_signature != in_signature or self._cached_signature.training != self.training:
             # Compute the tensor representation of operatons in each layer
             in_numel = in_channels * numpy.prod(in_volume)
             out_channels, out_volume = in_channels, in_volume
@@ -118,7 +120,7 @@ class ConformalLayers(torch.nn.Module):
             ##    if data.requires_grad:
             ##        data.retain_grad()
             # Set cached data as valid
-            self._cached_signature = (in_signature, (out_channels, out_volume), dtype, str(device))
+            self._cached_signature = CachedSignature(in_signature, OutSignature(out_channels, out_volume), self.training)
         return self._cached_signature
 
     def cached_data(self) -> Iterator[DenseTensor]:
@@ -132,7 +134,7 @@ class ConformalLayers(torch.nn.Module):
     def forward(self, input: DenseTensor):
         batches, in_channels, *in_volume = input.shape
         # If necessary, update cached data
-        _, (out_channels, out_volume), _, _ = self._update_cache(in_channels, tuple(in_volume), input.dtype, input.device)
+        _, (out_channels, out_volume), _ = self._update_cache(in_channels, tuple(in_volume), input.dtype, input.device)
         # Reshape the input as a matrix where each batch entry corresponds to a column 
         input_as_matrix = input.view(batches, -1).t()
         input_as_matrix_extra = input_as_matrix.norm(dim=0, keepdim=True)

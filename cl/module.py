@@ -5,6 +5,7 @@ from typing import Any, Optional, Tuple
 import MinkowskiEngine as me
 import torch
 
+
 class NativeModuleWrapper(torch.nn.Module):
     def __init__(self) -> None:
         super(NativeModuleWrapper, self).__init__()
