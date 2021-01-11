@@ -1,6 +1,5 @@
-from .extension import SparseTensor
 from .module import ConformalModule
-from .utils import SizeAny
+from .utils import ScalarTensor, SparseTensor, SizeAny
 from abc import abstractmethod
 from collections import OrderedDict
 from typing import Optional, Tuple
@@ -13,7 +12,7 @@ class BaseActivation(ConformalModule):
         super(BaseActivation, self).__init__(None, name=name)
 
     @abstractmethod
-    def to_tensor(self, previous: SparseTensor) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+    def to_tensor(self, previous: SparseTensor) -> Tuple[Optional[ScalarTensor], Optional[ScalarTensor]]:
         pass
 
 
@@ -21,8 +20,8 @@ class NoActivation(BaseActivation):
     def __init__(self) -> None:
         super(NoActivation, self).__init__()
 
-    def to_tensor(self, previous: SparseTensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        matrix_scalar = torch.as_tensor(1, dtype=previous.dtype, device=previous.device)
+    def to_tensor(self, previous: SparseTensor) -> Tuple[None, None]:
+        matrix_scalar = None
         tensor_scalar = None
         return matrix_scalar, tensor_scalar
 
@@ -42,11 +41,16 @@ class SRePro(BaseActivation):
     def output_size(self, in_channels: int, in_volume: SizeAny) -> Tuple[int, SizeAny]:
         return in_channels, in_volume
 
-    def to_tensor(self, previous: SparseTensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    def to_tensor(self, previous: SparseTensor) -> Tuple[ScalarTensor, ScalarTensor]:
         # Compute the alpha parameter
         if self._alpha is None:
-            symmetric = torch.mm(previous, previous.t())
-            alpha = torch.sqrt(math.sqrt(symmetric.nnz) * symmetric.values.abs().max(0)[0])
+            #symmetric = torch.sparse.mm(previous, previous.t()).coalesce()
+            #alpha = torch.sqrt(math.sqrt(symmetric._nnz()) * symmetric.values().abs().max(0)[0])  # See https://mathoverflow.net/questions/111633/upper-bound-on-largest-eigenvalue-of-a-real-symmetric-nn-matrix-with-all-main-d
+            ##min_dim = numpy.argmin(previous.shape)
+            ##alpha = torch.sqrt(previous.shape[min_dim] * torch.sparse.sum(previous.mul(previous), dim=1-min_dim).values().max())  # See https://doi.org/10.1137/050627812, Theorem 1, Corollary 2, item (ii)
+            min_dim = numpy.argmin(previous.shape)
+            symmetric = torch.sparse.mm(previous, previous.t()) if min_dim == 0 else torch.sparse.mm(previous.t(), previous)
+            alpha = torch.sqrt(math.sqrt(symmetric._nnz()) * symmetric._values().max())  # See https://mathoverflow.net/questions/111633/upper-bound-on-largest-eigenvalue-of-a-real-symmetric-nn-matrix-with-all-main-d
         else:
             alpha = torch.as_tensor(self.alpha, dtype=previous.dtype, device=previous.device)
         # Compute the last coefficient of the matrix

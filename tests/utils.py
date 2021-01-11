@@ -10,10 +10,7 @@ import time, torch, warnings
 
 
 DEVICE = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
-if DEVICE.type == 'cuda':
-    torch.cuda.set_device(DEVICE)
-else:
-    warnings.warn('The device was set to CPU.', RuntimeWarning)
+torch.cuda.set_device(DEVICE) if DEVICE.type == 'cuda' else warnings.warn(f'The device was set to {DEVICE}.', RuntimeWarning)
 
 
 class NativeNet(object):

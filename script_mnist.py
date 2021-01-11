@@ -22,11 +22,17 @@ class Network(nn.Module):
     def __init__(self):
         super(Network, self).__init__()
         self.features = cl.ConformalLayers(
-            cl.Conv2d(in_channels=1, out_channels=64, kernel_size=5),
-            cl.AvgPool2d(kernel_size=2, stride=2),
-            cl.SRePro(),
+            #cl.Conv2d(in_channels=1, out_channels=64, kernel_size=5),
+            #cl.AvgPool2d(kernel_size=2, stride=2),
+            #cl.SRePro(),
+            cl.Dropout(),
+            #cl.Conv2d(in_channels=64, out_channels=64, kernel_size=3),
+            #cl.AvgPool2d(kernel_size=3, stride=3),
+            #cl.SRePro(),
+            #cl.Conv2d(in_channels=64, out_channels=64, kernel_size=2),
+            #cl.SRePro(),
           )
-        self.fc1 = nn.Linear(9216, 10)
+        self.fc1 = nn.Linear(256, 10)
 
     def forward(self, x):
         out = self.features(x)
@@ -37,14 +43,11 @@ class Network(nn.Module):
 
 # Device to run the workload
 DEVICE = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
-if DEVICE.type == 'cuda':
-    torch.cuda.set_device(DEVICE)
-else:
-    warnings.warn('The device was set to CPU.', RuntimeWarning)
+torch.cuda.set_device(DEVICE) if DEVICE.type == 'cuda' else warnings.warn(f'The device was set to {DEVICE}.', RuntimeWarning)
 
 
 # The size of the batch
-BATCHSIZE = 16
+BATCHSIZE = 32
 
 
 # Sets the seed for reproducibility
@@ -72,7 +75,9 @@ def get_dataset():
 
 net = Network().to(DEVICE)
 criterion = nn.CrossEntropyLoss()
-optimizer = cl.SGD(net.parameters(), [net.features], lr=0.01, momentum=0.9)  #[ConformalLayers Hint] One has to use an optimizer adapted for the ConformalLayers
+optimizer = torch.optim.SGD(net.parameters(), lr=0.01, momentum=0.9)
+##[ConformalLayers Promise] One has to use an optimizer adapted for the ConformalLayers
+##optimizer = cl.SGD(net.parameters(), [net.features], lr=0.01, momentum=0.9)
 
 trainloader, testloader = get_dataset()
 
@@ -92,11 +97,14 @@ def train(epoch, optimizer):
             loss = criterion(outputs, targets)
 
         with Stopwatch('Train -- Epoch {epoch}, Batch {batch_idx} -- Backward       -- Elapsed time: {et_str}.', {'epoch': epoch, 'batch_idx': batch_idx}):
-            loss.backward(retain_graph=True) #[ConformalLayers Hint] One has to set retain_graph=True while calling loss.backward() to keep the graph used to compute data cached by ConformalLayer objects
+            loss.backward()
+            ##[ConformalLayers Promise] One has to set retain_graph=True while calling loss.backward() to keep the graph used to compute data cached by ConformalLayer objects
+            ##loss.backward(retain_graph=True)
 
         with Stopwatch('Train -- Epoch {epoch}, Batch {batch_idx} -- Optimizer Step -- Elapsed time: {et_str}.', {'epoch': epoch, 'batch_idx': batch_idx}):
             optimizer.step()
-        net.features.invalidate_cache()  #TODO Remover, caso a atualização da cache se mostre correta
+        ##[ConformalLayers Promise] net.features.invalidate_cache() is not needed if optimizer.step() is able to update the data cached by ConformalLayer objects
+        net.features.invalidate_cache()
 
         loss_arr.append(loss.detach().item())
         train_loss += loss_arr[-1]
@@ -106,8 +114,7 @@ def train(epoch, optimizer):
         correct += predicted.eq(targets).sum().item()
         acc_arr.append(correct / total)
 
-        progress_bar(batch_idx, len(trainloader), 'Loss: %.3f | Acc: %.3f%% (%d/%d)\n'
-                    % (train_loss/(batch_idx+1), 100.*correct/total, correct, total))
+        progress_bar(batch_idx, len(trainloader), 'Loss: %.3f | Acc: %.3f%% (%d/%d)\n' % (train_loss/(batch_idx+1), 100.*correct/total, correct, total))
 
     return loss_arr, acc_arr
 
@@ -134,8 +141,7 @@ def test(epoch):
         correct += predicted.eq(targets).sum().item()
         acc_arr.append(correct / total)
 
-        progress_bar(batch_idx, len(testloader), 'Loss: %.3f | Acc: %.3f%% (%d/%d)\n'
-                        % (test_loss/(batch_idx+1), 100.*correct/total, correct, total))
+        progress_bar(batch_idx, len(testloader), 'Loss: %.3f | Acc: %.3f%% (%d/%d)\n' % (test_loss/(batch_idx+1), 100.*correct/total, correct, total))
 
     return loss_arr, acc_arr
 

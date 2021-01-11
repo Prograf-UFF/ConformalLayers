@@ -1,5 +1,5 @@
 from .module import MinkowskiOperationWrapper, ConformalModule
-from .utils import IntOrSize1, IntOrSize2, IntOrSize3, SizeAny, Pair, Single, Triple
+from .utils import DenseTensor, SparseTensor, IntOrSize1, IntOrSize2, IntOrSize3, SizeAny, Pair, Single, Triple
 from collections import OrderedDict
 from typing import Optional, Tuple
 import MinkowskiEngine as me
@@ -15,8 +15,7 @@ class WrappedMinkowskiConvolution(MinkowskiOperationWrapper):
         self._function = me.MinkowskiConvolutionFunction()
         self.reset_parameters()
         
-
-    def _apply_function(self, input: me.SparseTensor, region_type: me.RegionType, region_offset: torch.IntTensor, out_coords_key: me.CoordsKey) -> torch.Tensor:
+    def _apply_function(self, input: me.SparseTensor, region_type: me.RegionType, region_offset: torch.IntTensor, out_coords_key: me.CoordsKey) -> DenseTensor:
         return self._function.apply(input.feats, self.kernel, input.tensor_stride, 1, self.kernel_size, self.dilation, region_type, region_offset, input.coords_key, out_coords_key, input.coords_man)
 
     def output_size(self, in_channels: int, in_volume: SizeAny) -> Tuple[int, SizeAny]:
@@ -49,7 +48,7 @@ class WrappedMinkowskiConvolutionTranspose(MinkowskiOperationWrapper):
         self.reset_parameters()
         raise NotImplementedError() #TODO Como lidar com output_padding durante a avaliação do módulo?
 
-    def _apply_function(self, input: me.SparseTensor, region_type: me.RegionType, region_offset: torch.IntTensor, out_coords_key: me.CoordsKey) -> torch.Tensor:
+    def _apply_function(self, input: me.SparseTensor, region_type: me.RegionType, region_offset: torch.IntTensor, out_coords_key: me.CoordsKey) -> DenseTensor:
         return self._function.apply(input.feats, self.kernel, input.tensor_stride, 1, self.kernel_size, self.dilation, region_type, region_offset, False, input.coords_key, out_coords_key, input.coords_man)
 
     def output_size(self, in_channels: int, in_volume: SizeAny) -> Tuple[int, SizeAny]:
@@ -93,9 +92,6 @@ class ConvNd(ConformalModule):
                 padding=padding,
                 dilation=dilation),
             name=name)
-
-    def _register_parent(self, parent, index: int) -> None:
-        parent._parameterz.append(self.native.kernel)
 
     def _repr_dict(self) -> OrderedDict:
         entries = super()._repr_dict()
@@ -216,9 +212,6 @@ class ConvTransposeNd(ConformalModule):
                 output_padding=output_padding,
                 dilation=dilation),
             name=name)
-
-    def _register_parent(self, parent, index: int) -> None:
-        parent._parameterz.append(self.native.kernel)
 
     def _repr_dict(self) -> OrderedDict:
         entries = super()._repr_dict()

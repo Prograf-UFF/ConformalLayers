@@ -1,9 +1,10 @@
-from .utils import SizeAny
+from .utils import DenseTensor, SizeAny
 from abc import ABC, abstractmethod
 from collections import OrderedDict
-from typing import Optional, Tuple
+from typing import Any, Optional, Tuple
 import MinkowskiEngine as me
 import torch
+
 
 class NativeModuleWrapper(torch.nn.Module):
     def __init__(self) -> None:
@@ -38,7 +39,7 @@ class MinkowskiOperationWrapper(NativeModuleWrapper):
         self._index_end_offset = kernel_origin + self.padding - dilated_kernel_size + 2
 
     @abstractmethod
-    def _apply_function(self, input: me.SparseTensor, region_type: me.RegionType, region_offset: torch.IntTensor, out_coords_key: me.CoordsKey) -> torch.Tensor:
+    def _apply_function(self, input: me.SparseTensor, region_type: me.RegionType, region_offset: torch.IntTensor, out_coords_key: me.CoordsKey) -> DenseTensor:
         pass
 
     def forward(self, input: me.SparseTensor) -> me.SparseTensor:
@@ -94,7 +95,7 @@ class MinkowskiOperationWrapper(NativeModuleWrapper):
         return self._kernel_generator
 
 
-class ConformalModule(ABC):
+class ConformalModule(torch.nn.Module):
     def __init__(self,
                  native: NativeModuleWrapper,
                  *, name: Optional[str]=None) -> None:
@@ -111,8 +112,8 @@ class ConformalModule(ABC):
             entries['name'] = self.name
         return entries
 
-    def _register_parent(self, parent, index: int) -> None:
-        pass
+    def forward(self, input: Any):
+        raise RuntimeError('This method should not be called.')
 
     def output_size(self, in_channels: int, in_volume: SizeAny) -> Tuple[int, SizeAny]:
         return self.native.output_size(in_channels, in_volume)
