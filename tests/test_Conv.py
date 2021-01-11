@@ -32,7 +32,7 @@ def main():
                                     for dilation in numpy.ndindex(*(numpy.maximum((in_volume - 1) // (kernel_size - 1), 1) - 1)):
                                         dilation = numpy.add(dilation, 1)
                                         print(f'CASE #{case}: batches={batches}, in_channels={in_channels}, out_channels={out_channels}, in_volume={*in_volume,}, kernel_size={*kernel_size,}, stride={*stride,}, padding={*padding,}, dilation={*dilation,}')
-                                        native_time, cl_time, cl_cached_time = unit_test(batches, in_channels, in_volume, NativeModule(in_channels=in_channels, out_channels=out_channels, kernel_size=tuple(kernel_size), stride=tuple(stride), padding=tuple(padding), dilation=tuple(dilation), groups=1, bias=False, padding_mode='zeros'))
+                                        native_time, cl_time, cl_cached_time = unit_test(batches, (in_channels, *in_volume), NativeModule(in_channels=in_channels, out_channels=out_channels, kernel_size=tuple(kernel_size), stride=tuple(stride), padding=tuple(padding), dilation=tuple(dilation), groups=1, bias=False, padding_mode='zeros'))
                                         sum_native_time += native_time
                                         sum_cl_time += cl_time
                                         sum_cl_cached_time += cl_cached_time

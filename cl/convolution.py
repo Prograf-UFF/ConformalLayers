@@ -1,4 +1,4 @@
-from .module import MinkowskiOperationWrapper, ConformalModule
+from .module import ConformalModule, StridedMinkowskiFunctionWrapper
 from .utils import DenseTensor, SparseTensor, IntOrSize1, IntOrSize2, IntOrSize3, SizeAny, Pair, Single, Triple
 from collections import OrderedDict
 from typing import Optional, Tuple
@@ -6,7 +6,7 @@ import MinkowskiEngine as me
 import math, torch
 
 
-class WrappedMinkowskiConvolution(MinkowskiOperationWrapper):
+class WrappedMinkowskiConvolution(StridedMinkowskiFunctionWrapper):
     def __init__(self, in_channels: int, out_channels: int, **kwargs) -> None:
         super(WrappedMinkowskiConvolution, self).__init__(transposed=False, **kwargs)
         self._in_channels = in_channels
@@ -18,8 +18,8 @@ class WrappedMinkowskiConvolution(MinkowskiOperationWrapper):
     def _apply_function(self, input: me.SparseTensor, region_type: me.RegionType, region_offset: torch.IntTensor, out_coords_key: me.CoordsKey) -> DenseTensor:
         return self._function.apply(input.feats, self.kernel, input.tensor_stride, 1, self.kernel_size, self.dilation, region_type, region_offset, input.coords_key, out_coords_key, input.coords_man)
 
-    def output_size(self, in_channels: int, in_volume: SizeAny) -> Tuple[int, SizeAny]:
-        return self.out_channels, tuple(map(int, (torch.as_tensor(in_volume, dtype=torch.int32, device='cpu') + 2 * self.padding - self.dilation * (self.kernel_size - 1) - 1) // self.stride + 1))
+    def output_dims(self, in_channels: int, *in_volume: int) -> SizeAny:
+        return self.out_channels, *map(int, (torch.as_tensor(in_volume, dtype=torch.int32, device='cpu') + 2 * self.padding - self.dilation * (self.kernel_size - 1) - 1) // self.stride + 1)
 
     def reset_parameters(self) -> None:
         torch.nn.init.kaiming_uniform_(self._kernel, a=math.sqrt(5))
@@ -37,7 +37,7 @@ class WrappedMinkowskiConvolution(MinkowskiOperationWrapper):
         return self._kernel
 
 
-class WrappedMinkowskiConvolutionTranspose(MinkowskiOperationWrapper):
+class WrappedMinkowskiConvolutionTranspose(StridedMinkowskiFunctionWrapper):
     def __init__(self, in_channels: int, out_channels: int, output_padding: SizeAny, **kwargs) -> None:
         super(WrappedMinkowskiConvolutionTranspose, self).__init__(transposed=True, **kwargs)
         self._in_channels = in_channels
@@ -51,8 +51,8 @@ class WrappedMinkowskiConvolutionTranspose(MinkowskiOperationWrapper):
     def _apply_function(self, input: me.SparseTensor, region_type: me.RegionType, region_offset: torch.IntTensor, out_coords_key: me.CoordsKey) -> DenseTensor:
         return self._function.apply(input.feats, self.kernel, input.tensor_stride, 1, self.kernel_size, self.dilation, region_type, region_offset, False, input.coords_key, out_coords_key, input.coords_man)
 
-    def output_size(self, in_channels: int, in_volume: SizeAny) -> Tuple[int, SizeAny]:
-        return self.out_channels, tuple((torch.as_tensor(in_volume, dtype=torch.int32, device='cpu') - 1) * self.stride - 2 * self.padding + self.output_padding + self.dilation * (self.kernel_size - 1) + 1)
+    def output_dims(self, in_channels: int, *in_volume: int) -> SizeAny:
+        return self.out_channels, *map(int, (torch.as_tensor(in_volume, dtype=torch.int32, device='cpu') - 1) * self.stride - 2 * self.padding + self.output_padding + self.dilation * (self.kernel_size - 1) + 1)
 
     def reset_parameters(self) -> None:
         torch.nn.init.kaiming_uniform_(self._kernel, a=math.sqrt(5))

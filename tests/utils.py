@@ -103,6 +103,15 @@ class CLNet(object):
                     padding=module.padding,
                     dilation=module.dilation))
                 self._copy_kernel(module.weight, modules[-1].kernel, True)
+            elif isinstance(module, torch.nn.Flatten):
+                assert module.start_dim == 1 and module.end_dim == -1
+                modules.append(cl.Flatten())
+            elif isinstance(module, torch.nn.Linear):
+                assert not module.bias
+                modules.append(cl.Linear(
+                    in_features=module.in_features,
+                    out_features=module.out_features))
+                self._copy_kernel(module.weight, modules[-1].weight, True)
             else:
                 raise NotImplementedError()
         self.modules = cl.ConformalLayers(*modules)
@@ -117,7 +126,7 @@ class CLNet(object):
             dst.data.copy_(src.data.T.reshape(*dst.data.shape))
 
 
-def unit_test(batches: int, in_channels: int, in_volume: Tuple[int, ...], *native_modules: torch.nn.Module):
+def unit_test(batches: int, in_dims: Tuple[int, ...], *native_modules: torch.nn.Module):
     tol = 1e-6
     # Bind native net and Conformal Layer-based net
     native_net = NativeNet(*native_modules)
@@ -125,9 +134,9 @@ def unit_test(batches: int, in_channels: int, in_volume: Tuple[int, ...], *nativ
     cl_net = CLNet(*native_modules)
     cl_net.modules.to(DEVICE)
     # Create input data
-    input = torch.rand(batches, in_channels, *in_volume).to(DEVICE)
+    input = torch.rand(batches, *in_dims).to(DEVICE)
     # Compute resulting data
-    unit_input = input / input.view(batches, -1).norm(dim=1).view(batches, *torch.ones((len(in_volume) + 1,), dtype=torch.int32))
+    unit_input = input / input.view(batches, -1).norm(dim=1).view(batches, *torch.ones((len(in_dims),), dtype=torch.int32))
     start_time = time.time()
     output_native = native_net(unit_input)
     native_time = time.time() - start_time

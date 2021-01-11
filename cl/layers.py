@@ -51,7 +51,7 @@ class ConformalLayers(torch.nn.Module):
         return f'{self.__class__.__name__}( ¯\_(ツ)_/¯ )'
 
     def _from_minkowski_tensor_to_sparse_matrix(self, tensor: me.SparseTensor, in_numel: int, out_channels: int, out_volume: SizeAny) -> SparseTensor:
-        out_numel = out_channels * numpy.prod(out_volume)
+        out_numel = out_channels * numpy.prod(out_volume, dtype=int)
         coords = tensor.coords.view(-1, 1 + len(out_volume), 1).expand(-1, -1, out_channels).permute(0, 2, 1)
         coords = torch.cat((coords, torch.empty((len(coords), out_channels, 1), dtype=torch.int32, device=coords.device)), 2)
         for channel in range(out_channels):
@@ -61,12 +61,12 @@ class ConformalLayers(torch.nn.Module):
         values = tensor.feats.view(-1)
         return torch.sparse_coo_tensor(torch.stack((col, row,)), values, (out_numel, in_numel), device=values.device)
 
-    def _make_eye_input(self, in_channels: int, in_volume: SizeAny, device: torch.device) -> me.SparseTensor:
-        in_entries = numpy.prod(in_volume)
+    def _make_eye_input(self, in_channels: int, in_volume: SizeAny, dtype: torch.dtype, device: torch.device) -> me.SparseTensor:
+        in_entries = numpy.prod(in_volume, dtype=int)
         in_numel = in_channels * in_entries
         coords = torch.stack(torch.meshgrid(*map(lambda end: torch.arange(int(end), dtype=torch.int32, device='cpu'), (in_channels, *in_volume))), dim=-1).view(-1, 1 + len(in_volume))
         coords[:, 0] = torch.arange(len(coords), dtype=torch.int32, device='cpu')
-        feats = torch.zeros(in_numel, in_channels, device=device)
+        feats = torch.zeros(in_numel, in_channels, dtype=dtype, device=device)
         for channel in range(in_channels):
             feats[channel*in_entries:(channel+1)*in_entries, channel] = 1
         return me.SparseTensor(feats, coords)
@@ -82,7 +82,7 @@ class ConformalLayers(torch.nn.Module):
         in_signature = InSignature(in_channels, in_volume, dtype, str(device))
         if self._cached_signature is None or self._cached_signature.in_signature != in_signature or self._cached_signature.training != self.training:
             # Compute the tensor representation of operatons in each layer
-            in_numel = in_channels * numpy.prod(in_volume)
+            in_numel = in_channels * numpy.prod(in_volume, dtype=int)
             out_channels, out_volume = in_channels, in_volume
             # Initialize the resulting variables
             cached_matrix = self._make_identity_matrix(in_numel, dtype=dtype, device=device)
@@ -92,10 +92,10 @@ class ConformalLayers(torch.nn.Module):
             stored_layer_values: List[Tuple[SparseTensor, ScalarTensor, ScalarTensor]] = [None] * self.nlayers
             for layer, (sequential, activation) in enumerate(zip(self._sequentials, self._activations)):
                 # Compute the eye tensor for the current layer
-                eye = self._make_eye_input(out_channels, out_volume, device)
+                eye = self._make_eye_input(out_channels, out_volume, dtype=cached_matrix.dtype, device=cached_matrix.device)
                 # Compute the number of channels and volume of the output of this layer
                 for module in sequential:
-                    out_channels, out_volume = module.output_size(out_channels, out_volume)
+                    out_channels, *out_volume = module.output_dims(out_channels, *out_volume)
                 # Compute the sparse Minkowski tensor and the custom sparse matrix (tensor) representation of the Euclidean portion o sequential matrix U^{layer}
                 sequential_matrix_me: me.SparseTensor = sequential(eye)
                 sequential_matrix = self._from_minkowski_tensor_to_sparse_matrix(sequential_matrix_me, len(eye.coords), out_channels, out_volume)
@@ -115,11 +115,6 @@ class ConformalLayers(torch.nn.Module):
             self._cached_matrix = cached_matrix
             self._cached_matrix_extra = cached_matrix_extra
             self._cached_tensor_extra = cached_tensor_extra
-            ##[ConformalLayers Promise] Ensure that the grad of non-leaf tensors will be retained
-            ##for data in self.cached_data():
-            ##    if data.requires_grad:
-            ##        data.retain_grad()
-            # Set cached data as valid
             self._cached_signature = CachedSignature(in_signature, OutSignature(out_channels, out_volume), self.training)
         return self._cached_signature
 

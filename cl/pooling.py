@@ -1,4 +1,4 @@
-from .module import MinkowskiOperationWrapper, ConformalModule
+from .module import ConformalModule, StridedMinkowskiFunctionWrapper
 from .utils import DenseTensor, IntOrSize1, IntOrSize2, IntOrSize3, SizeAny, Pair, Single, Triple
 from collections import OrderedDict
 from typing import Optional, Tuple
@@ -6,7 +6,7 @@ import MinkowskiEngine as me
 import torch
 
 
-class WrappedMinkowskiAvgPooling(MinkowskiOperationWrapper):
+class WrappedMinkowskiAvgPooling(StridedMinkowskiFunctionWrapper):
     def __init__(self, **kwargs) -> None:
         super(WrappedMinkowskiAvgPooling, self).__init__(transposed=False, **kwargs)
         self._inv_cardinality = 1 / int(torch.prod(self.kernel_size))
@@ -17,11 +17,11 @@ class WrappedMinkowskiAvgPooling(MinkowskiOperationWrapper):
         out_feats = out_feats * self._inv_cardinality
         return out_feats
 
-    def output_size(self, in_channels: int, in_volume: SizeAny) -> Tuple[int, SizeAny]:
-        return in_channels, tuple(map(int, (torch.as_tensor(in_volume, dtype=torch.int32, device='cpu') + 2 * self.padding - self.dilation * (self.kernel_size - 1) - 1) // self.stride + 1))
+    def output_dims(self, in_channels: int, *in_volume: int) -> SizeAny:
+        return in_channels, *map(int, (torch.as_tensor(in_volume, dtype=torch.int32, device='cpu') + 2 * self.padding - self.dilation * (self.kernel_size - 1) - 1) // self.stride + 1)
 
 
-class WrappedMinkowskiSumPooling(MinkowskiOperationWrapper):
+class WrappedMinkowskiSumPooling(StridedMinkowskiFunctionWrapper):
     def __init__(self, **kwargs) -> None:
         super(WrappedMinkowskiSumPooling, self).__init__(transposed=False, **kwargs)
         self._function = me.MinkowskiAvgPoolingFunction()
@@ -29,8 +29,8 @@ class WrappedMinkowskiSumPooling(MinkowskiOperationWrapper):
     def _apply_function(self, input: me.SparseTensor, region_type: me.RegionType, region_offset: torch.IntTensor, out_coords_key: me.CoordsKey) -> DenseTensor:
         return self._function.apply(input.feats, input.tensor_stride, 1, self.kernel_size, self.dilation, region_type, region_offset, False, input.coords_key, out_coords_key, input.coords_man)
 
-    def output_size(self, in_channels: int, in_volume: SizeAny) -> Tuple[int, SizeAny]:
-        return in_channels, tuple(map(int, (torch.as_tensor(in_volume, dtype=torch.int32, device='cpu') + 2 * self.padding - self.dilation * (self.kernel_size - 1) - 1) // self.stride + 1))
+    def output_dims(self, in_channels: int, *in_volume: int) -> SizeAny:
+        return in_channels, *map(int, (torch.as_tensor(in_volume, dtype=torch.int32, device='cpu') + 2 * self.padding - self.dilation * (self.kernel_size - 1) - 1) // self.stride + 1)
 
 
 class AvgPoolNd(ConformalModule):

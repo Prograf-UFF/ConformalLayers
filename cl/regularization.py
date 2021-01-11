@@ -1,24 +1,7 @@
-from .module import ConformalModule, NativeModuleWrapper
-from .utils import SizeAny
+from .module import ConformalModule, SimpleMinkowskiModuleWrapper
 from collections import OrderedDict
-from typing import Optional, Tuple
+from typing import Optional
 import MinkowskiEngine as me
-
-
-class WrappedRegularization(NativeModuleWrapper):
-    def __init__(self, module: me.MinkowskiModuleBase) -> None:
-        super(WrappedRegularization, self).__init__()
-        self._module = module
-
-    def forward(self, input: me.SparseTensor) -> me.SparseTensor:
-        return self.module(input)
-
-    def output_size(self, in_channels: int, in_volume: SizeAny) -> Tuple[int, SizeAny]:
-        return in_channels, in_volume
-
-    @property
-    def module(self) -> me.MinkowskiModuleBase:
-        return self._module
 
 
 class Dropout(ConformalModule):
@@ -27,7 +10,9 @@ class Dropout(ConformalModule):
                  inplace: bool=False,
                  *, name: Optional[str]=None) -> None:
         super(Dropout, self).__init__(
-            WrappedRegularization(me.MinkowskiDropout(p=p, inplace=inplace)),
+            SimpleMinkowskiModuleWrapper(
+                module=me.MinkowskiDropout(p=p, inplace=inplace),
+                output_dims=lambda *in_dims: (*in_dims,)),
             name=name)
 
     def _repr_dict(self) -> OrderedDict:

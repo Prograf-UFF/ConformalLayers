@@ -1,7 +1,7 @@
 from .utils import DenseTensor, SizeAny
 from abc import ABC, abstractmethod
 from collections import OrderedDict
-from typing import Any, Optional, Tuple
+from typing import Any, Callable, List, Optional
 import MinkowskiEngine as me
 import torch
 
@@ -11,18 +11,35 @@ class NativeModuleWrapper(torch.nn.Module):
         super(NativeModuleWrapper, self).__init__()
 
     @abstractmethod
-    def output_size(self, in_size: SizeAny) -> SizeAny:
+    def output_dims(self, *in_size: int) -> SizeAny:
         pass
 
 
-class MinkowskiOperationWrapper(NativeModuleWrapper):
+class SimpleMinkowskiModuleWrapper(NativeModuleWrapper):
+    def __init__(self, module: me.MinkowskiModuleBase, output_dims: Callable[..., SizeAny]) -> None:
+        super(SimpleMinkowskiModuleWrapper, self).__init__()
+        self._module = module
+        self._output_dims = output_dims
+
+    def forward(self, input: me.SparseTensor) -> me.SparseTensor:
+        return self.module(input)
+
+    def output_dims(self, *in_dims: int) -> SizeAny:
+        return self._output_dims(*in_dims)
+
+    @property
+    def module(self) -> me.MinkowskiModuleBase:
+        return self._module
+
+
+class StridedMinkowskiFunctionWrapper(NativeModuleWrapper):
     def __init__(self,
                  kernel_size: SizeAny,
                  stride: SizeAny,
                  padding: SizeAny,
                  dilation: SizeAny,
                  transposed: bool) -> None:
-        super(MinkowskiOperationWrapper, self).__init__()
+        super(StridedMinkowskiFunctionWrapper, self).__init__()
         # Declare basic properties
         self._kernel_size = torch.as_tensor(kernel_size, dtype=torch.int32, device='cpu')
         self._stride = torch.as_tensor(stride, dtype=torch.int32, device='cpu')
@@ -115,8 +132,8 @@ class ConformalModule(torch.nn.Module):
     def forward(self, input: Any):
         raise RuntimeError('This method should not be called.')
 
-    def output_size(self, in_channels: int, in_volume: SizeAny) -> Tuple[int, SizeAny]:
-        return self.native.output_size(in_channels, in_volume)
+    def output_dims(self, *in_dims: int) -> SizeAny:
+        return self.native.output_dims(*in_dims)
     
     @property
     def name(self) -> Optional[str]:
