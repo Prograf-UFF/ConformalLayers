@@ -31,12 +31,12 @@ class Network(nn.Module):
             cl.SRePro(),
             cl.Conv2d(in_channels=64, out_channels=64, kernel_size=2),
             cl.SRePro(),
+            cl.Flatten(),
           )
         self.fc1 = nn.Linear(256, 10)
 
     def forward(self, x):
         out = self.features(x)
-        out = nn.Flatten()(out)
         out = self.fc1(out)
         return out
 
