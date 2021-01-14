@@ -13,22 +13,19 @@ class FlattenWrapper(NativeModuleWrapper):
         self._end_dim = -1 #TODO Implement end_dim != -1
 
     def forward(self, input: me.SparseTensor) -> me.SparseTensor:
-        in_channels = input.feats.shape[1]
-
-        in_volume = input.coords[:, 1:].max(0)[0] #TODO Esse max pode ser carregado módulo a módulo?
-        in_volume += 1
-
-        in_numel = in_channels * int(in_volume.prod())
-
-        in_coords = input.coords.view(-1, 1 + len(in_volume), 1).expand(-1, -1, in_channels).permute(0, 2, 1)
-        in_coords = torch.cat((in_coords, torch.empty((len(in_coords), in_channels, 1), dtype=torch.int32, device=in_coords.device)), 2)
-        for channel in range(in_channels):
-            in_coords[:, channel, -1] = channel
-        in_coords = in_coords.view(-1, len(in_volume) + 2)
-        
-        out_coords = torch.stack(unravel_index(ravel_multi_index(tuple(in_coords[:, dim] for dim in (0, -1, *range(1, in_coords.shape[1] - 1))), (in_numel, in_channels, *in_volume)), (in_numel, in_numel))).t()
+        # Compute the shape of the input tensor
+        dense_dim = input.feats.shape[1]
+        sparse_dims = input.coords[:, 1:].max(0)[0] + 1 #TODO How to replace the max function call by some predefined value?
+        # Compute the coordinates of the input entries
+        in_coords = input.coords.view(-1, 1 + len(sparse_dims), 1).expand(-1, -1, dense_dim).permute(0, 2, 1)
+        in_coords = torch.cat((in_coords, torch.empty((len(in_coords), dense_dim, 1), dtype=torch.int32, device=in_coords.device)), 2)
+        for ind in range(dense_dim):
+            in_coords[:, ind, -1] = ind
+        in_coords = in_coords.view(-1, len(sparse_dims) + 2)
+        in_numel = dense_dim * int(sparse_dims.prod())
+        # Flattens the input features and their coordinates
         out_feats = input.feats.view(-1, 1)
-        
+        out_coords = torch.stack(unravel_index(ravel_multi_index(tuple(in_coords[:, dim] for dim in (0, -1, *range(1, in_coords.shape[1] - 1))), (in_numel, dense_dim, *sparse_dims)), (in_numel, in_numel))).t()  
         return me.SparseTensor(out_feats, out_coords)
 
     def output_dims(self, *in_dims: int) -> SizeAny:

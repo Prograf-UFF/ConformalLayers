@@ -6,29 +6,6 @@ import MinkowskiEngine as me
 import torch
 
 
-class WrappedMinkowskiTensor():
-    def __init__(self, feats: DenseTensor, coords: DenseTensor, size: SizeAny, **kwargs) -> None:
-        super(WrappedMinkowskiTensor, self).__init__()
-        self._native = me.SparseTensor(feats, coords, **kwargs)
-        self._size = torch.Size(size)
-
-    @property
-    def coords(self) -> DenseTensor:
-        return self._native.coords
-    
-    @property
-    def feats(self) -> DenseTensor:
-        return self._native.feats
-    
-    @property
-    def native(self) -> me.SparseTensor:
-        return self._native
-
-    @property
-    def shape(self) -> torch.Size:
-        self._size
-
-
 class NativeModuleWrapper(torch.nn.Module):
     def __init__(self) -> None:
         super(NativeModuleWrapper, self).__init__()
@@ -87,7 +64,7 @@ class StridedMinkowskiFunctionWrapper(NativeModuleWrapper):
         indices_per_batch = input.decomposed_coordinates
         # Compute the complete set of coordinates for evaluating the module
         index_start = self._index_start_offset
-        index_end = in_coords[:, 1:].max(0)[0] + self._index_end_offset #TODO Esse max pode ser carregado módulo a módulo?
+        index_end = in_coords[:, 1:].max(0)[0] + self._index_end_offset #TODO How to replace the max function call by some predefined value?
         out_coords = torch.cat(tuple(torch.stack(torch.meshgrid(torch.as_tensor((batch,), dtype=torch.int32, device=in_coords.device), *map(lambda start, end, step: torch.arange(int(start), int(end), int(step), dtype=torch.int32, device=in_coords.device),
             torch.max(index_start, ((indices.min(0)[0] + self._kernel_start_offset - index_start) // self.stride) * self.stride + index_start),
             torch.min(index_end, ((indices.max(0)[0] + self._kernel_end_offset - index_start) // self.stride + 1) * self.stride + index_start),
