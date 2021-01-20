@@ -14,9 +14,7 @@ STRIDE_START, STRIDE_END = 1, 4 + 1
 
 def main():
     print('--- START Conv')
-    sum_native_time = 0
-    sum_cl_time = 0
-    sum_cl_cached_time = 0
+    times_sum = torch.zeros(5, dtype=torch.float32, device='cpu')
     case = 1
     for dimension, NativeModule in zip(DIMENSIONS, NATIVE_MODULES):
         for batches in range(BATCHES_START, BATCHES_END):
@@ -32,12 +30,14 @@ def main():
                                     for dilation in numpy.ndindex(*(numpy.maximum((in_volume - 1) // (kernel_size - 1), 1) - 1)):
                                         dilation = numpy.add(dilation, 1)
                                         print(f'CASE #{case}: batches={batches}, in_channels={in_channels}, out_channels={out_channels}, in_volume={*in_volume,}, kernel_size={*kernel_size,}, stride={*stride,}, padding={*padding,}, dilation={*dilation,}')
-                                        native_time, cl_time, cl_cached_time = unit_test(batches, (in_channels, *in_volume), NativeModule(in_channels=in_channels, out_channels=out_channels, kernel_size=tuple(kernel_size), stride=tuple(stride), padding=tuple(padding), dilation=tuple(dilation), groups=1, bias=False, padding_mode='zeros'))
-                                        sum_native_time += native_time
-                                        sum_cl_time += cl_time
-                                        sum_cl_cached_time += cl_cached_time
+                                        times_sum += unit_test(batches, (in_channels, *in_volume), NativeModule(in_channels=in_channels, out_channels=out_channels, kernel_size=tuple(kernel_size), stride=tuple(stride), padding=tuple(padding), dilation=tuple(dilation), groups=1, bias=False, padding_mode='zeros'))
                                         case += 1
-    print(f'--- Native: {sum_native_time / (case - 1)} sec; CL: {sum_cl_time / (case - 1)} sec; Cached CL: {sum_cl_cached_time / (case - 1)} sec')
+    print(f'  - Train')
+    print(f'    Native: {times_sum[0] / (case - 1): 1.8f} sec; \tCL: {times_sum[1] / (case - 1): 1.8f} sec')
+    print(f'  - Eval 1')
+    print(f'    Native: {times_sum[2] / (case - 1): 1.8f} sec; \tCL: {times_sum[3] / (case - 1): 1.8f} sec')
+    print(f'  - Eval 2')
+    print(f'    Native: {times_sum[2] / (case - 1): 1.8f} sec; \tCL: {times_sum[4] / (case - 1): 1.8f} sec')
     print('--- END Conv')
 
 

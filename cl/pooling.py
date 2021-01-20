@@ -1,203 +1,125 @@
-from .module import ConformalModule, StridedMinkowskiFunctionWrapper
-from .utils import DenseTensor, IntOrSize1, IntOrSize2, IntOrSize3, SizeAny, Pair, Single, Triple
+from .module import ConformalModule, ForwardMinkowskiData, ForwardTorchData, WrappedMinkowskiStridedOperation
+from .utils import DenseTensor, ScalarTensor, IntOrSize1, IntOrSize2, IntOrSize3, SizeAny, Pair, Single, Triple
 from collections import OrderedDict
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
 import MinkowskiEngine as me
 import torch
 
 
-class WrappedMinkowskiAvgPooling(StridedMinkowskiFunctionWrapper):
-    def __init__(self, **kwargs) -> None:
-        super(WrappedMinkowskiAvgPooling, self).__init__(transposed=False, **kwargs)
-        self._inv_cardinality = 1 / int(torch.prod(self.kernel_size))
+class WrappedMinkowskiAvgPooling(WrappedMinkowskiStridedOperation):
+    def __init__(self,
+                 owner: ConformalModule) -> None:
+        super(WrappedMinkowskiAvgPooling, self).__init__(
+            owner,
+            transposed=False)
+        self._kernel_entry = 1 / float(torch.prod(owner.kernel_size))
         self._function = me.MinkowskiAvgPoolingFunction()
-
-    def _apply_function(self, input: me.SparseTensor, region_type: me.RegionType, region_offset: torch.IntTensor, out_coords_key: me.CoordsKey) -> DenseTensor:
-        out_feats = self._function.apply(input.feats, input.tensor_stride, 1, self.kernel_size, self.dilation, region_type, region_offset, False, input.coords_key, out_coords_key, input.coords_man)
-        out_feats = out_feats * self._inv_cardinality
-        return out_feats
-
-    def output_dims(self, in_channels: int, *in_volume: int) -> SizeAny:
-        return in_channels, *map(int, (torch.as_tensor(in_volume, dtype=torch.int32, device='cpu') + 2 * self.padding - self.dilation * (self.kernel_size - 1) - 1) // self.stride + 1)
-
-
-class WrappedMinkowskiSumPooling(StridedMinkowskiFunctionWrapper):
-    def __init__(self, **kwargs) -> None:
-        super(WrappedMinkowskiSumPooling, self).__init__(transposed=False, **kwargs)
-        self._function = me.MinkowskiAvgPoolingFunction()
-
-    def _apply_function(self, input: me.SparseTensor, region_type: me.RegionType, region_offset: torch.IntTensor, out_coords_key: me.CoordsKey) -> DenseTensor:
-        return self._function.apply(input.feats, input.tensor_stride, 1, self.kernel_size, self.dilation, region_type, region_offset, False, input.coords_key, out_coords_key, input.coords_man)
-
-    def output_dims(self, in_channels: int, *in_volume: int) -> SizeAny:
-        return in_channels, *map(int, (torch.as_tensor(in_volume, dtype=torch.int32, device='cpu') + 2 * self.padding - self.dilation * (self.kernel_size - 1) - 1) // self.stride + 1)
+        
+    def _apply_function(self, input: me.SparseTensor, alpha_upper: ScalarTensor, region_type: me.RegionType, region_offset: torch.IntTensor, out_coords_key: me.CoordsKey) -> Tuple[DenseTensor, ScalarTensor]:
+        out_feats = self._function.apply(input.feats, input.tensor_stride, 1, self.owner.kernel_size, 1, region_type, region_offset, False, input.coords_key, out_coords_key, input.coords_man)
+        out_feats = out_feats * self._kernel_entry
+        return out_feats, alpha_upper # Apply the Young's convolution inequality with p = 2, q = 1, and r = 2 (https://en.m.wikipedia.org/wiki/Young%27s_convolution_inequality). Recall that the L1-norm of the mean kernel is 1, so alpha_upper * 1 = alpha_upper.
 
 
 class AvgPoolNd(ConformalModule):
+    _TORCH_MODULE_CLASS = None
+
     def __init__(self,
                  kernel_size: SizeAny,
                  stride: Optional[SizeAny],
                  padding: SizeAny,
-                 dilation: SizeAny,
                  *, name: Optional[str]=None) -> None:
-        super(AvgPoolNd, self).__init__(
-            WrappedMinkowskiAvgPooling(
-                kernel_size=kernel_size,
-                stride=kernel_size if stride is None else stride,
-                padding=padding,
-                dilation=dilation),
-            name=name)
+        super(AvgPoolNd, self).__init__(name=name)
+        self._torch_module = self._TORCH_MODULE_CLASS(
+            kernel_size=kernel_size,
+            stride=stride,
+            padding=padding,
+            ceil_mode=False,
+            count_include_pad=True)
+        self._minkowski_module = WrappedMinkowskiAvgPooling(self)
 
     def _repr_dict(self) -> OrderedDict:
         entries = super()._repr_dict()
         entries['kernel_size'] = tuple(map(int, self.kernel_size))
         entries['stride'] = tuple(map(int, self.stride))
         entries['padding'] = tuple(map(int, self.padding))
-        entries['dilation'] = tuple(map(int, self.dilation))
         return entries
+
+    def forward(self, input: Union[ForwardMinkowskiData, ForwardTorchData]) -> Union[ForwardMinkowskiData, ForwardTorchData]:
+        if self.training:
+            (input, input_extra), alpha_upper = input
+            return (self._torch_module(input), input_extra), alpha_upper # Apply the Young's convolution inequality with p = 2, q = 1, and r = 2 (https://en.m.wikipedia.org/wiki/Young%27s_convolution_inequality). Recall that the L1-norm of the mean kernel is 1, so alpha_upper * 1 = alpha_upper.
+        else:
+            return self._minkowski_module(input)
+
+    def output_dims(self, in_channels: int, *in_volume: int) -> SizeAny:
+        return in_channels, *map(int, (torch.as_tensor(in_volume, dtype=torch.int32, device='cpu') + 2 * self.padding - (self.kernel_size - 1) - 1) // self.stride + 1)
+
+    @property
+    def minkowski_module(self) -> torch.nn.Module:
+        return self._minkowski_module
+
+    @property
+    def torch_module(self) -> torch.nn.Module:
+        return self._torch_module
+
+    @property
+    def dilation(self) -> int:
+        return 1
 
     @property
     def kernel_size(self) -> torch.IntTensor:
-        return self.native.kernel_size
+        return torch.as_tensor(self._torch_module.kernel_size, dtype=torch.int32, device='cpu')
 
     @property
     def stride(self) -> torch.IntTensor:
-        return self.native.stride
+        return torch.as_tensor(self._torch_module.stride, dtype=torch.int32, device='cpu')
 
     @property
     def padding(self) -> torch.IntTensor:
-        return self.native.padding
-
-    @property
-    def dilation(self) -> torch.IntTensor:
-        return self.native.dilation
+        return torch.as_tensor(self._torch_module.padding, dtype=torch.int32, device='cpu')
 
 
 class AvgPool1d(AvgPoolNd):
+    _TORCH_MODULE_CLASS = torch.nn.AvgPool1d
+
     def __init__(self,
                  kernel_size: IntOrSize1,
                  stride: Optional[IntOrSize1]=None,
                  padding: IntOrSize1=0,
-                 dilation: IntOrSize1=1,
                  *, name: Optional[str]=None) -> None:
         super(AvgPool1d, self).__init__(
             kernel_size=Single(kernel_size),
             stride=Single(stride),
             padding=Single(padding),
-            dilation=Single(dilation),
             name=name)
 
 
 class AvgPool2d(AvgPoolNd):
+    _TORCH_MODULE_CLASS = torch.nn.AvgPool2d
+
     def __init__(self,
                  kernel_size: IntOrSize2,
                  stride: Optional[IntOrSize2]=None,
                  padding: IntOrSize2=0,
-                 dilation: IntOrSize2=1,
                  *, name: Optional[str]=None) -> None:
         super(AvgPool2d, self).__init__(
             kernel_size=Pair(kernel_size),
             stride=Pair(stride),
             padding=Pair(padding),
-            dilation=Pair(dilation),
             name=name)
 
 
 class AvgPool3d(AvgPoolNd):
+    _TORCH_MODULE_CLASS = torch.nn.AvgPool3d
+
     def __init__(self,
                  kernel_size: IntOrSize3,
                  stride: Optional[IntOrSize3]=None,
                  padding: IntOrSize3=0,
-                 dilation: IntOrSize3=0,
                  *, name: Optional[str]=None) -> None:
         super(AvgPool3d, self).__init__(
             kernel_size=Triple(kernel_size),
             stride=Triple(stride),
             padding=Triple(padding),
-            dilation=Triple(dilation),
-            name=name)
-
-
-class SumPoolNd(ConformalModule):
-    def __init__(self,
-                 kernel_size: SizeAny,
-                 stride: Optional[SizeAny],
-                 padding: SizeAny,
-                 dilation: SizeAny,
-                 *, name: Optional[str]=None) -> None:
-        super(SumPoolNd, self).__init__(
-            WrappedMinkowskiSumPooling(
-                kernel_size=kernel_size,
-                stride=kernel_size if stride is None else stride,
-                padding=padding,
-                dilation=dilation),
-            name=name)
-
-    def _repr_dict(self) -> OrderedDict:
-        entries = super()._repr_dict()
-        entries['kernel_size'] = tuple(map(int, self.kernel_size))
-        entries['stride'] = tuple(map(int, self.stride))
-        entries['padding'] = tuple(map(int, self.padding))
-        entries['dilation'] = tuple(map(int, self.dilation))
-        return entries
-
-    @property
-    def kernel_size(self) -> torch.IntTensor:
-        return self.native.kernel_size
-
-    @property
-    def stride(self) -> torch.IntTensor:
-        return self.native.stride
-
-    @property
-    def padding(self) -> torch.IntTensor:
-        return self.native.padding
-
-    @property
-    def dilation(self) -> torch.IntTensor:
-        return self.native.dilation
-
-
-class SumPool1d(SumPoolNd):
-    def __init__(self,
-                 kernel_size: IntOrSize1,
-                 stride: Optional[IntOrSize1]=None,
-                 padding: IntOrSize1=0,
-                 dilation: IntOrSize1=1,
-                 *, name: Optional[str]=None) -> None:
-        super(SumPool1d, self).__init__(
-            kernel_size=Single(kernel_size),
-            stride=Single(stride),
-            padding=Single(padding),
-            dilation=Single(dilation),
-            name=name)
-
-
-class SumPool2d(SumPoolNd):
-    def __init__(self,
-                 kernel_size: IntOrSize2,
-                 stride: Optional[IntOrSize2]=None,
-                 padding: IntOrSize2=0,
-                 dilation: IntOrSize2=1,
-                 *, name: Optional[str]=None) -> None:
-        super(SumPool2d, self).__init__(
-            kernel_size=Pair(kernel_size),
-            stride=Pair(stride),
-            padding=Pair(padding),
-            dilation=Pair(dilation),
-            name=name)
-
-
-class SumPool3d(SumPoolNd):
-    def __init__(self,
-                 kernel_size: IntOrSize3,
-                 stride: Optional[IntOrSize3]=None,
-                 padding: IntOrSize3=0,
-                 dilation: IntOrSize3=1,
-                 *, name: Optional[str]=None) -> None:
-        super(SumPool3d, self).__init__(
-            kernel_size=Triple(kernel_size),
-            stride=Triple(stride),
-            padding=Triple(padding),
-            dilation=Triple(dilation),
             name=name)

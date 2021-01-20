@@ -1,7 +1,9 @@
-from .module import ConformalModule, SimpleMinkowskiModuleWrapper
+from .module import ConformalModule, ForwardMinkowskiData, ForwardTorchData
+from .utils import SizeAny
 from collections import OrderedDict
-from typing import Optional
+from typing import Optional, Union
 import MinkowskiEngine as me
+import torch
 
 
 class Dropout(ConformalModule):
@@ -9,23 +11,37 @@ class Dropout(ConformalModule):
                  p: float=0.5,
                  inplace: bool=False,
                  *, name: Optional[str]=None) -> None:
-        super(Dropout, self).__init__(
-            SimpleMinkowskiModuleWrapper(
-                module=me.MinkowskiDropout(p=p, inplace=inplace),
-                output_dims=lambda *in_dims: (*in_dims,)),
-            name=name)
+        super(Dropout, self).__init__(name=name)
+        self._minkowski_module = me.MinkowskiDropout(p=p, inplace=inplace)
 
     def _repr_dict(self) -> OrderedDict:
         entries = super()._repr_dict()
         entries['p'] = self.p
         entries['inplace'] = self.inplace
-        entries['active'] = self.training
         return entries
+
+    def forward(self, input: Union[ForwardMinkowskiData, ForwardTorchData]) -> Union[ForwardMinkowskiData, ForwardTorchData]:
+        if self.training:
+            (input, input_extra), alpha_upper = input
+            return (self._minkowski_module.module(input), input_extra), alpha_upper
+        else:
+            return self._minkowski_module(input), alpha_upper
+
+    def output_dims(self, *in_dims: int) -> SizeAny:
+        return (*in_dims,)
+
+    @property
+    def minkowski_module(self) -> torch.nn.Module:
+        return self._minkowski_module
+
+    @property
+    def torch_module(self) -> torch.nn.Module:
+        return self._minkowski_module.module
 
     @property
     def p(self) -> float:
-        return self.native.module.module.p
+        return self._minkowski_module.module.p
 
     @property
     def inplace(self) -> bool:
-        return self.native.module.module.inplace
+        return self._minkowski_module.module.inplace

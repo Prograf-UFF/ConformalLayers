@@ -1,80 +1,46 @@
-from .module import ConformalModule, StridedMinkowskiFunctionWrapper
-from .utils import DenseTensor, SparseTensor, IntOrSize1, IntOrSize2, IntOrSize3, SizeAny, Pair, Single, Triple
+from .module import ConformalModule, ForwardMinkowskiData, ForwardTorchData, WrappedMinkowskiStridedOperation
+from .utils import DenseTensor, ScalarTensor, IntOrSize1, IntOrSize2, IntOrSize3, Pair, Single, SizeAny, Triple
 from collections import OrderedDict
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
 import MinkowskiEngine as me
-import math, torch
+import torch
 
 
-class WrappedMinkowskiConvolution(StridedMinkowskiFunctionWrapper):
-    def __init__(self, in_channels: int, out_channels: int, **kwargs) -> None:
-        super(WrappedMinkowskiConvolution, self).__init__(transposed=False, **kwargs)
-        self._in_channels = in_channels
-        self._out_channels = out_channels
-        self._kernel = torch.nn.Parameter(torch.FloatTensor(self.kernel_generator.kernel_volume, in_channels, out_channels))
+class WrappedMinkowskiConvolution(WrappedMinkowskiStridedOperation):
+    def __init__(self,
+                 owner: ConformalModule) -> None:
+        super(WrappedMinkowskiConvolution, self).__init__(
+            owner,
+            transposed=False)
         self._function = me.MinkowskiConvolutionFunction()
-        self.reset_parameters()
         
-    def _apply_function(self, input: me.SparseTensor, region_type: me.RegionType, region_offset: torch.IntTensor, out_coords_key: me.CoordsKey) -> DenseTensor:
-        return self._function.apply(input.feats, self.kernel, input.tensor_stride, 1, self.kernel_size, self.dilation, region_type, region_offset, input.coords_key, out_coords_key, input.coords_man)
-
-    def output_dims(self, in_channels: int, *in_volume: int) -> SizeAny:
-        return self.out_channels, *map(int, (torch.as_tensor(in_volume, dtype=torch.int32, device='cpu') + 2 * self.padding - self.dilation * (self.kernel_size - 1) - 1) // self.stride + 1)
-
-    def reset_parameters(self) -> None:
-        torch.nn.init.kaiming_uniform_(self._kernel, a=math.sqrt(5))
-
-    @property
-    def in_channels(self) -> int:
-        return self._in_channels
-
-    @property
-    def out_channels(self) -> int:
-        return self._out_channels
-
-    @property
-    def kernel(self) -> torch.nn.Parameter:
-        return self._kernel
+    def _apply_function(self, input: me.SparseTensor, alpha_upper: ScalarTensor, region_type: me.RegionType, region_offset: torch.IntTensor, out_coords_key: me.CoordsKey) -> Tuple[DenseTensor, ScalarTensor]:
+        kernel = torch.FloatTensor(self.kernel_generator.kernel_volume, self.owner.in_channels, self.owner.out_channels)
+        kernel.copy_(self.owner.weight.T.reshape(*kernel.shape)) # We don't know why Minkowski Engine convolution does not work with the view
+        out_feats = self._function.apply(input.feats, kernel, input.tensor_stride, 1, self.owner.kernel_size, self.owner.dilation, region_type, region_offset, input.coords_key, out_coords_key, input.coords_man)
+        alpha_upper = alpha_upper * torch.linalg.norm(self.owner.weight.view(-1), ord=1) # Apply the Young's convolution inequality with p = 2, q = 1, and r = 2 (https://en.m.wikipedia.org/wiki/Young%27s_convolution_inequality).
+        return out_feats, alpha_upper
 
 
-class WrappedMinkowskiConvolutionTranspose(StridedMinkowskiFunctionWrapper):
-    def __init__(self, in_channels: int, out_channels: int, output_padding: SizeAny, **kwargs) -> None:
-        super(WrappedMinkowskiConvolutionTranspose, self).__init__(transposed=True, **kwargs)
-        self._in_channels = in_channels
-        self._out_channels = out_channels
-        self._output_padding = torch.as_tensor(output_padding, dtype=torch.int32, device='cpu')
-        self._kernel = torch.nn.Parameter(torch.FloatTensor(self.kernel_generator.kernel_volume, in_channels, out_channels))
+class WrappedMinkowskiConvolutionTranspose(WrappedMinkowskiStridedOperation):
+    def __init__(self,
+                 owner: ConformalModule) -> None:
+        super(WrappedMinkowskiConvolutionTranspose, self).__init__(
+            owner,
+            transposed=True)
         self._function = me.MinkowskiConvolutionTransposeFunction()
-        self.reset_parameters()
         raise NotImplementedError() #TODO Como lidar com output_padding durante a avaliação do módulo?
 
-    def _apply_function(self, input: me.SparseTensor, region_type: me.RegionType, region_offset: torch.IntTensor, out_coords_key: me.CoordsKey) -> DenseTensor:
-        return self._function.apply(input.feats, self.kernel, input.tensor_stride, 1, self.kernel_size, self.dilation, region_type, region_offset, False, input.coords_key, out_coords_key, input.coords_man)
-
-    def output_dims(self, in_channels: int, *in_volume: int) -> SizeAny:
-        return self.out_channels, *map(int, (torch.as_tensor(in_volume, dtype=torch.int32, device='cpu') - 1) * self.stride - 2 * self.padding + self.output_padding + self.dilation * (self.kernel_size - 1) + 1)
-
-    def reset_parameters(self) -> None:
-        torch.nn.init.kaiming_uniform_(self._kernel, a=math.sqrt(5))
-
-    @property
-    def in_channels(self) -> int:
-        return self._in_channels
-
-    @property
-    def out_channels(self) -> int:
-        return self._out_channels
-
-    @property
-    def output_padding(self) -> torch.IntTensor:
-        return self._output_padding
-
-    @property
-    def kernel(self) -> torch.nn.Parameter:
-        return self._kernel
+    def _apply_function(self, input: me.SparseTensor, alpha_upper: ScalarTensor, region_type: me.RegionType, region_offset: torch.IntTensor, out_coords_key: me.CoordsKey) -> Tuple[DenseTensor, ScalarTensor]:
+        kernel = self.owner.weight.permute(1, 0, *range(2, self.owner.weight.dim())).T.view(self.kernel_generator.kernel_volume, self.owner.in_channels, self.owner.out_channels)
+        out_feats = self._function.apply(input.feats, self.kernel, input.tensor_stride, 1, self.kernel_size, self.dilation, region_type, region_offset, False, input.coords_key, out_coords_key, input.coords_man)
+        alpha_upper = alpha_upper * torch.linalg.norm(self.owner.weight.view(-1), ord=1) # Apply the Young's convolution inequality with p = 2, q = 1, and r = 2 (https://en.m.wikipedia.org/wiki/Young%27s_convolution_inequality).
+        return out_feats, alpha_upper
 
 
 class ConvNd(ConformalModule):
+    _TORCH_MODULE_CLASS = None
+
     def __init__(self,
                  in_channels: int,
                  out_channels: int,
@@ -83,15 +49,18 @@ class ConvNd(ConformalModule):
                  padding: SizeAny,
                  dilation: SizeAny,
                  *, name: Optional[str]=None) -> None:
-        super(ConvNd, self).__init__(
-            WrappedMinkowskiConvolution(
-                in_channels=in_channels,
-                out_channels=out_channels,
-                kernel_size=kernel_size,
-                stride=stride,
-                padding=padding,
-                dilation=dilation),
-            name=name)
+        super(ConvNd, self).__init__(name=name)
+        self._torch_module = self._TORCH_MODULE_CLASS(
+            in_channels=in_channels,
+            out_channels=out_channels,
+            kernel_size=kernel_size,
+            stride=stride,
+            padding=padding,
+            dilation=dilation,
+            groups=1,
+            bias=False,
+            padding_mode='zeros')
+        self._minkowski_module = WrappedMinkowskiConvolution(self)
 
     def _repr_dict(self) -> OrderedDict:
         entries = super()._repr_dict()
@@ -103,39 +72,58 @@ class ConvNd(ConformalModule):
         entries['dilation'] = tuple(map(int, self.dilation))
         return entries
 
-    def reset_parameters(self) -> None:
-        self.native.reset_parameters()
+    def forward(self, input: Union[ForwardMinkowskiData, ForwardTorchData]) -> Union[ForwardMinkowskiData, ForwardTorchData]:
+        if self.training:
+            (input, input_extra), alpha_upper = input
+            output = self._torch_module(input)
+            alpha_upper = alpha_upper * torch.linalg.norm(self._torch_module.weight.view(-1), ord=1) # Apply the Young's convolution inequality with p = 2, q = 1, and r = 2 (https://en.m.wikipedia.org/wiki/Young%27s_convolution_inequality).
+            return (output, input_extra), alpha_upper
+        else:
+            return self._minkowski_module(input)
+
+    def output_dims(self, in_channels: int, *in_volume: int) -> SizeAny:
+        return self.out_channels, *map(int, (torch.as_tensor(in_volume, dtype=torch.int32, device='cpu') + 2 * self.padding - self.dilation * (self.kernel_size - 1) - 1) // self.stride + 1)
+
+    @property
+    def minkowski_module(self) -> torch.nn.Module:
+        return self._minkowski_module
+
+    @property
+    def torch_module(self) -> torch.nn.Module:
+        return self._torch_module
 
     @property
     def in_channels(self) -> int:
-        return self.native.in_channels
+        return self._torch_module.in_channels
 
     @property
     def out_channels(self) -> int:
-        return self.native.out_channels
+        return self._torch_module.out_channels
 
     @property
     def kernel_size(self) -> torch.IntTensor:
-        return self.native.kernel_size
+        return torch.as_tensor(self._torch_module.kernel_size, dtype=torch.int32, device='cpu')
 
     @property
     def stride(self) -> torch.IntTensor:
-        return self.native.stride
+        return torch.as_tensor(self._torch_module.stride, dtype=torch.int32, device='cpu')
 
     @property
     def padding(self) -> torch.IntTensor:
-        return self.native.padding
+        return torch.as_tensor(self._torch_module.padding, dtype=torch.int32, device='cpu')
 
     @property
     def dilation(self) -> torch.IntTensor:
-        return self.native.dilation
+        return torch.as_tensor(self._torch_module.dilation, dtype=torch.int32, device='cpu')
 
     @property
-    def kernel(self) -> torch.nn.Parameter:
-        return self.native.kernel
+    def weight(self) -> torch.nn.Parameter:
+        return self._torch_module.weight
 
 
 class Conv1d(ConvNd):
+    _TORCH_MODULE_CLASS = torch.nn.Conv1d
+
     def __init__(self,
                  in_channels: int,
                  out_channels: int,
@@ -155,6 +143,8 @@ class Conv1d(ConvNd):
 
 
 class Conv2d(ConvNd):
+    _TORCH_MODULE_CLASS = torch.nn.Conv2d
+
     def __init__(self,
                  in_channels: int,
                  out_channels: int,
@@ -174,6 +164,8 @@ class Conv2d(ConvNd):
 
 
 class Conv3d(ConvNd):
+    _TORCH_MODULE_CLASS = torch.nn.Conv3d
+
     def __init__(self,
                  in_channels: int,
                  out_channels: int,
@@ -193,6 +185,8 @@ class Conv3d(ConvNd):
 
 
 class ConvTransposeNd(ConformalModule):
+    _TORCH_MODULE_CLASS = None
+
     def __init__(self,
                  in_channels: int,
                  out_channels: int,
@@ -202,16 +196,19 @@ class ConvTransposeNd(ConformalModule):
                  output_padding: SizeAny,
                  dilation: SizeAny,
                  *, name: Optional[str]=None) -> None:
-        super(ConvTransposeNd, self).__init__(
-            WrappedMinkowskiConvolutionTranspose(
-                in_channels=in_channels,
-                out_channels=out_channels,
-                kernel_size=kernel_size,
-                stride=stride,
-                padding=padding,
-                output_padding=output_padding,
-                dilation=dilation),
-            name=name)
+        super(ConvTransposeNd, self).__init__(name=name)
+        self._torch_module = self._TORCH_MODULE_CLASS(
+            in_channels=in_channels,
+            out_channels=out_channels,
+            kernel_size=kernel_size,
+            stride=stride,
+            padding=padding,
+            output_padding=output_padding,
+            dilation=dilation,
+            groups=1,
+            bias=False,
+            padding_mode='zeros')
+        self._minkowski_module = WrappedMinkowskiConvolutionTranspose(self)
 
     def _repr_dict(self) -> OrderedDict:
         entries = super()._repr_dict()
@@ -224,43 +221,62 @@ class ConvTransposeNd(ConformalModule):
         entries['dilation'] = tuple(map(int, self.dilation))
         return entries
 
-    def reset_parameters(self) -> None:
-        self.native.reset_parameters()
+    def forward(self, input: Union[ForwardMinkowskiData, ForwardTorchData]) -> Union[ForwardMinkowskiData, ForwardTorchData]:
+        if self.training:
+            (input, input_extra), alpha_upper = input
+            output = self._torch_module(input)
+            alpha_upper = alpha_upper * torch.linalg.norm(self._torch_module.weight.view(-1), ord=1) # Apply the Young's convolution inequality with p = 2, q = 1, and r = 2 (https://en.m.wikipedia.org/wiki/Young%27s_convolution_inequality).
+            return (output, input_extra), alpha_upper
+        else:
+            return self._minkowski_module(input)
+
+    def output_dims(self, in_channels: int, *in_volume: int) -> SizeAny:
+        return self.out_channels, *map(int, (torch.as_tensor(in_volume, dtype=torch.int32, device='cpu') - 1) * self.stride - 2 * self.padding + self.output_padding + self.dilation * (self.kernel_size - 1) + 1)
+
+    @property
+    def minkowski_module(self) -> torch.nn.Module:
+        return self._minkowski_module
+
+    @property
+    def torch_module(self) -> torch.nn.Module:
+        return self._torch_module
 
     @property
     def in_channels(self) -> int:
-        return self.native.in_channels
+        return self._torch_module.in_channels
 
     @property
     def out_channels(self) -> int:
-        return self.native.out_channels
+        return self._torch_module.out_channels
 
     @property
     def kernel_size(self) -> torch.IntTensor:
-        return self.native.kernel_size
+        return torch.as_tensor(self._torch_module.kernel_size, dtype=torch.int32, device='cpu')
 
     @property
     def stride(self) -> torch.IntTensor:
-        return self.native.stride
+        return torch.as_tensor(self._torch_module.stride, dtype=torch.int32, device='cpu')
 
     @property
     def padding(self) -> torch.IntTensor:
-        return self.native.padding
+        return torch.as_tensor(self._torch_module.padding, dtype=torch.int32, device='cpu')
 
     @property
     def output_padding(self) -> torch.IntTensor:
-        return self.native.output_padding
+        return torch.as_tensor(self._torch_module.output_padding, dtype=torch.int32, device='cpu')
 
     @property
     def dilation(self) -> torch.IntTensor:
-        return self.native.dilation
+        return torch.as_tensor(self._torch_module.dilation, dtype=torch.int32, device='cpu')
 
     @property
-    def kernel(self) -> torch.nn.Parameter:
-        return self.native.kernel
+    def weight(self) -> torch.nn.Parameter:
+        return self._torch_module.weight
 
 
 class ConvTranspose1d(ConvTransposeNd):
+    _TORCH_MODULE_CLASS = torch.nn.ConvTranspose1d
+
     def __init__(self,
                  in_channels: int,
                  out_channels: int,
@@ -282,6 +298,8 @@ class ConvTranspose1d(ConvTransposeNd):
 
 
 class ConvTranspose2d(ConvTransposeNd):
+    _TORCH_MODULE_CLASS = torch.nn.ConvTranspose2d
+
     def __init__(self,
                  in_channels: int,
                  out_channels: int,
@@ -303,6 +321,8 @@ class ConvTranspose2d(ConvTransposeNd):
 
 
 class ConvTranspose3d(ConvTransposeNd):
+    _TORCH_MODULE_CLASS = torch.nn.ConvTranspose3d
+
     def __init__(self,
                  in_channels: int,
                  out_channels: int,

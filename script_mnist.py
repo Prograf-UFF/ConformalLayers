@@ -18,30 +18,6 @@ from Experiments.utils.utils import progress_bar
 from utils import Stopwatch
 
 
-# Defines a NN topology
-class Network(nn.Module):
-    def __init__(self):
-        super(Network, self).__init__()
-        self.features = cl.ConformalLayers(
-            cl.Conv2d(in_channels=1, out_channels=64, kernel_size=5),
-            cl.AvgPool2d(kernel_size=2, stride=2),
-            cl.SRePro(),
-            cl.Dropout(),
-            cl.Conv2d(in_channels=64, out_channels=64, kernel_size=3),
-            cl.AvgPool2d(kernel_size=3, stride=3),
-            cl.SRePro(),
-            cl.Conv2d(in_channels=64, out_channels=64, kernel_size=2),
-            cl.SRePro(),
-            cl.Flatten(),
-          )
-        self.fc1 = nn.Linear(256, 10)
-
-    def forward(self, x):
-        out = self.features(x)
-        out = self.fc1(out)
-        return out
-
-
 # Device to run the workload
 DEVICE = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
 torch.cuda.set_device(DEVICE) if DEVICE.type == 'cuda' else warnings.warn(f'The device was set to {DEVICE}.', RuntimeWarning)
@@ -74,8 +50,21 @@ def get_dataset():
     return trainloader, testloader
 
 
-net = Network().to(DEVICE)
+net = cl.ConformalLayers(
+    cl.Conv2d(in_channels=1, out_channels=64, kernel_size=5),
+    cl.AvgPool2d(kernel_size=2, stride=2),
+    cl.SRePro(),
+    cl.Dropout(),
+    cl.Conv2d(in_channels=64, out_channels=64, kernel_size=3),
+    cl.AvgPool2d(kernel_size=3, stride=3),
+    cl.SRePro(),
+    cl.Conv2d(in_channels=64, out_channels=64, kernel_size=2),
+    cl.SRePro(),
+    cl.Flatten(),
+    cl.Linear(256, 10)).to(DEVICE)
+
 criterion = nn.CrossEntropyLoss()
+
 optimizer = torch.optim.SGD(net.parameters(), lr=0.01, momentum=0.9)
 
 trainloader, testloader = get_dataset()
@@ -100,7 +89,6 @@ def train(epoch, optimizer):
 
         with Stopwatch('Train -- Epoch {epoch}, Batch {batch_idx} -- Optimizer Step -- Elapsed time: {et_str}.', {'epoch': epoch, 'batch_idx': batch_idx}):
             optimizer.step()
-        net.features.invalidate_cache()
 
         loss_arr.append(loss.detach().item())
         train_loss += loss_arr[-1]

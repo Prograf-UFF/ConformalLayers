@@ -1,33 +1,33 @@
 from .activation import BaseActivation, NoActivation, SRePro
-from .module import ConformalModule
+from .module import ConformalModule, ForwardMinkowskiData
 from .utils import DenseTensor, ScalarTensor, SparseTensor, SizeAny, ravel_multi_index, unravel_index
 from collections import namedtuple, OrderedDict
-from typing import Iterator, List, Tuple, Union
+from typing import Iterator, List, Optional, Tuple, Union
 import MinkowskiEngine as me
 import numpy, operator, threading, torch, types
 
 
 InSignature = namedtuple('InSignature', ['dims', 'dtype', 'device_str'])
 OutSignature = namedtuple('OutSignature', ['dims'])
-CachedSignature = namedtuple('CachedSignature', ['in_signature', 'out_signature', 'training'])
+CachedSignature = namedtuple('CachedSignature', ['in_signature', 'out_signature'])
 
 
 class ConformalLayers(torch.nn.Module):
     def __init__(self, *args: ConformalModule) -> None:
         super(ConformalLayers, self).__init__()
         # Keep conformal modules as is and track parameter's updates
-        self._modulez = torch.nn.ModuleList(args)
+        self._modulez = torch.nn.Sequential(*args)
         # Break the sequence of operations into Conformal Layers
         start = 0
         self._sequentials: List[torch.nn.Sequential] = list()
         self._activations: List[BaseActivation] = list()
         for ind, curr in enumerate(self._modulez):
             if isinstance(curr, BaseActivation):
-                self._sequentials.append(torch.nn.Sequential(*map(lambda module: module.native, self._modulez[start:ind])))
+                self._sequentials.append(self._modulez[start:ind])
                 self._activations.append(curr)
                 start = ind + 1
         if start != len(self._modulez):
-            self._sequentials.append(torch.nn.Sequential(*map(lambda module: module.native, self._modulez[start:])))
+            self._sequentials.append(self._modulez[start:])
             self._activations.append(NoActivation())
         # Initialize cached data with null values
         self._cached_signature: CachedSignature = None
@@ -82,7 +82,7 @@ class ConformalLayers(torch.nn.Module):
 
     def _update_cache(self, in_dims: SizeAny, dtype: torch.dtype, device: torch.device) -> CachedSignature:
         in_signature = InSignature(in_dims, dtype, str(device))
-        if self._cached_signature is None or self._cached_signature.in_signature != in_signature or self._cached_signature.training != self.training:
+        if self._cached_signature is None or self._cached_signature.in_signature != in_signature:
             in_numel = numpy.prod(in_dims)
             # Initialize the resulting variables
             cached_matrix = self._make_identity_matrix(in_numel, dtype=dtype, device=device)
@@ -93,17 +93,18 @@ class ConformalLayers(torch.nn.Module):
             for layer, (sequential, activation) in enumerate(zip(self._sequentials, self._activations)):
                 # Compute the eye tensor for the current layer
                 eye = self._make_eye_input(in_dims, dtype=cached_matrix.dtype, device=cached_matrix.device)
+                alpha_upper = torch.as_tensor(1, dtype=dtype, device=device)
                 # Compute the number of channels and volume of the output of this layer
                 out_dims = in_dims
                 for module in sequential:
                     out_dims = module.output_dims(*out_dims)
                 # Compute the sparse Minkowski tensor and the custom sparse matrix (tensor) representation of the Euclidean portion o sequential matrix U^{layer}
-                sequential_matrix_me: me.SparseTensor = sequential(eye)
+                sequential_matrix_me, alpha_upper = sequential((eye, alpha_upper))
                 sequential_matrix = self._from_minkowski_to_sparse_coo(sequential_matrix_me, len(eye.coords), out_dims)
                 # Compute the Euclidean portion of the matrix product U^{layer} . ... . U^{2} . U^{1}
                 cached_matrix = torch.sparse.mm(sequential_matrix, cached_matrix)
                 # Compute the scalar values used to define the activation matrix M^{layer} and the activation rank-3 tensor T^{layer}
-                activation_matrix_scalar, activation_tensor_scalar = activation.to_tensor(sequential_matrix)
+                activation_matrix_scalar, activation_tensor_scalar = activation.to_tensor(alpha_upper)
                 # Store computed values
                 stored_layer_values[layer] = cached_matrix, activation_matrix_scalar, activation_tensor_scalar
                 in_dims = out_dims
@@ -117,7 +118,7 @@ class ConformalLayers(torch.nn.Module):
             self._cached_matrix = cached_matrix
             self._cached_matrix_extra = cached_matrix_extra
             self._cached_tensor_extra = cached_tensor_extra
-            self._cached_signature = CachedSignature(in_signature, OutSignature(out_dims,), self.training)
+            self._cached_signature = CachedSignature(in_signature, OutSignature(out_dims,))
         return self._cached_signature
 
     def cached_data(self) -> Iterator[DenseTensor]:
@@ -128,26 +129,39 @@ class ConformalLayers(torch.nn.Module):
         if self._cached_tensor_extra is not None:
             yield self._cached_tensor_extra.values
     
-    def forward(self, input: DenseTensor):
+    def forward(self, input: DenseTensor) -> DenseTensor:
         batches, *in_dims = input.shape
-        # If necessary, update cached data
-        _, (out_dims,), _ = self._update_cache(tuple(in_dims), input.dtype, input.device)
-        # Reshape the input as a matrix where each batch entry corresponds to a column 
-        input_as_matrix = input.view(batches, -1).t()
-        input_as_matrix_extra = input_as_matrix.norm(dim=0, keepdim=True)
-        # Apply the Conformal Layers
-        output_as_matrix = torch.sparse.mm(self._cached_matrix, input_as_matrix)
-        output_as_matrix_extra = self._cached_matrix_extra * input_as_matrix_extra
-        output_as_matrix_extra = output_as_matrix_extra + (torch.sparse.mm(self._cached_tensor_extra, input_as_matrix) * input_as_matrix).sum(dim=0, keepdim=True)
-        output_as_matrix = output_as_matrix / output_as_matrix_extra
-        return output_as_matrix.t().view(batches, *out_dims)
+        # Decide whether to use conventional processing or Conformal Layers-based processing
+        if self.training:
+            # If we are training, then the cache will not be valid for evaluation since the parameters will change
+            self.invalidate_cache()
+            # Apply the modules as is
+            input_extra = torch.linalg.norm(input.view(batches, -1), ord=2, dim=1).view(batches, *map(lambda _: 1, range(len(in_dims))))
+            alpha_upper = torch.as_tensor(1, dtype=input.dtype, device=input.device)
+            (output, output_extra), _ = self._modulez(((input, input_extra), alpha_upper))
+            output = output / output_extra
+        else:
+            with torch.no_grad():
+                # Reshape the input as a matrix where each batch entry corresponds to a column 
+                input_as_matrix = input.view(batches, -1).t()
+                input_as_matrix_extra = torch.linalg.norm(input_as_matrix, ord=2, dim=0, keepdim=True)
+                # If necessary, update cached data
+                _, (out_dims,) = self._update_cache(tuple(in_dims), input.dtype, input.device)
+                # Apply the modules using the compact representation of the Conformal Layers
+                output_as_matrix = torch.sparse.mm(self._cached_matrix, input_as_matrix)
+                output_as_matrix_extra = self._cached_matrix_extra * input_as_matrix_extra
+                output_as_matrix_extra = output_as_matrix_extra + (torch.sparse.mm(self._cached_tensor_extra, input_as_matrix) * input_as_matrix).sum(dim=0, keepdim=True)
+                output_as_matrix = output_as_matrix / output_as_matrix_extra
+                # Reshape the output as expected
+                output = output_as_matrix.t().view(batches, *out_dims)
+        return output
 
     def invalidate_cache(self) -> None:
         self._cached_signature = None
-        me.clear_global_coords_man()  # When done using MinkowskiEngine for forward and backward, we must cleanup the coordinates manager
+        me.clear_global_coords_man()  # When done using MinkowskiEngine, we must cleanup the coordinates manager
 
     @property
-    def cached_signature(self) -> CachedSignature:
+    def cached_signature(self) -> Optional[CachedSignature]:
         return self._cached_signature
 
     @property

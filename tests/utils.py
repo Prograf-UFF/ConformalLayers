@@ -52,7 +52,7 @@ class CLNet(object):
                     stride=module.stride,
                     padding=module.padding,
                     dilation=module.dilation))
-                self._copy_kernel(module.weight, modules[-1].kernel, False)
+                modules[-1].weight.data.copy_(module.weight.data)
             elif isinstance(module, torch.nn.Conv2d):
                 assert module.groups == 1 and not module.bias and module.padding_mode == 'zeros'
                 modules.append(cl.Conv2d(
@@ -62,7 +62,7 @@ class CLNet(object):
                     stride=module.stride,
                     padding=module.padding,
                     dilation=module.dilation))
-                self._copy_kernel(module.weight, modules[-1].kernel, False)
+                modules[-1].weight.data.copy_(module.weight.data)
             elif isinstance(module, torch.nn.Conv3d):
                 assert module.groups == 1 and not module.bias and module.padding_mode == 'zeros'
                 modules.append(cl.Conv3d(
@@ -72,7 +72,7 @@ class CLNet(object):
                     stride=module.stride,
                     padding=module.padding,
                     dilation=module.dilation))
-                self._copy_kernel(module.weight, modules[-1].kernel, False)
+                modules[-1].weight.data.copy_(module.weight.data)
             elif isinstance(module, torch.nn.ConvTranspose1d):
                 assert module.groups == 1 and not module.bias and module.padding_mode == 'zeros'
                 modules.append(cl.ConvTranspose1d(
@@ -82,7 +82,7 @@ class CLNet(object):
                     stride=module.stride,
                     padding=module.padding,
                     dilation=module.dilation))
-                self._copy_kernel(module.weight, modules[-1].kernel, True)
+                modules[-1].weight.data.copy_(module.weight.data)
             elif isinstance(module, torch.nn.ConvTranspose2d):
                 assert module.groups == 1 and not module.bias and module.padding_mode == 'zeros'
                 modules.append(cl.ConvTranspose2d(
@@ -92,7 +92,7 @@ class CLNet(object):
                     stride=module.stride,
                     padding=module.padding,
                     dilation=module.dilation))
-                self._copy_kernel(module.weight, modules[-1].kernel, True)
+                modules[-1].weight.data.copy_(module.weight.data)
             elif isinstance(module, torch.nn.ConvTranspose3d):
                 assert module.groups == 1 and not module.bias and module.padding_mode == 'zeros'
                 modules.append(cl.ConvTranspose3d(
@@ -102,7 +102,7 @@ class CLNet(object):
                     stride=module.stride,
                     padding=module.padding,
                     dilation=module.dilation))
-                self._copy_kernel(module.weight, modules[-1].kernel, True)
+                modules[-1].weight.data.copy_(module.weight.data)
             elif isinstance(module, torch.nn.Flatten):
                 assert module.start_dim == 1 and module.end_dim == -1
                 modules.append(cl.Flatten())
@@ -111,19 +111,13 @@ class CLNet(object):
                 modules.append(cl.Linear(
                     in_features=module.in_features,
                     out_features=module.out_features))
-                self._copy_kernel(module.weight, modules[-1].weight, True)
+                modules[-1].weight.data.copy_(module.weight.data)
             else:
                 raise NotImplementedError()
         self.modules = cl.ConformalLayers(*modules)
 
     def __call__(self, input: torch.Tensor):
         return self.modules(input)
-
-    def _copy_kernel(self, src: torch.nn.Parameter, dst: torch.nn.Parameter, transposed: bool):
-        if transposed:
-            dst.data.copy_(src.data.permute(1, 0, *range(2, src.data.dim())).T.reshape(*dst.data.shape))
-        else:
-            dst.data.copy_(src.data.T.reshape(*dst.data.shape))
 
 
 def unit_test(batches: int, in_dims: Tuple[int, ...], *native_modules: torch.nn.Module):
@@ -135,18 +129,38 @@ def unit_test(batches: int, in_dims: Tuple[int, ...], *native_modules: torch.nn.
     cl_net.modules.to(DEVICE)
     # Create input data
     input = torch.rand(batches, *in_dims).to(DEVICE)
+    unit_input = input / torch.linalg.norm(input.view(batches, -1), ord=2, dim=1).view(batches, *map(lambda _: 1, range(len(in_dims))))
     # Compute resulting data
-    unit_input = input / input.view(batches, -1).norm(dim=1).view(batches, *torch.ones((len(in_dims),), dtype=torch.int32))
+    native_net.modules.train()
     start_time = time.time()
-    output_native = native_net(unit_input)
-    native_time = time.time() - start_time
+    output_native_train = native_net(unit_input)
+    native_train_time = time.time() - start_time
+    #
+    cl_net.modules.train()
     start_time = time.time()
-    output_cl = cl_net(input)
-    cl_time = time.time() - start_time
+    output_cl_train = cl_net(input)
+    cl_train_time = time.time() - start_time
+    #
+    native_net.modules.eval()
     start_time = time.time()
-    output_cl = cl_net(input)
-    cl_cached_time = time.time() - start_time
+    output_native_eval = native_net(unit_input)
+    native_eval_time = time.time() - start_time
+    #
+    cl_net.modules.eval()
+    start_time = time.time()
+    output_cl_eval1 = cl_net(input)
+    cl_eval1_time = time.time() - start_time
+    #
+    cl_net.modules.eval()
+    start_time = time.time()
+    output_cl_eval2 = cl_net(input)
+    cl_eval2_time = time.time() - start_time
     # Compare results
-    if torch.max(torch.abs(output_native - output_cl)) > tol:
-        raise RuntimeError(f'\nnative = {output_native}\ncl = {output_cl}')
-    return native_time, cl_time, cl_cached_time
+    if torch.max(torch.abs(output_native_train - output_cl_train)) > tol:
+        raise RuntimeError(f'\nTrain\nnative = {output_native_train}\ncl = {output_cl_train}')
+    if torch.max(torch.abs(output_native_eval - output_cl_eval1)) > tol:
+        raise RuntimeError(f'\nEval 1\nnative = {output_native_eval}\ncl = {output_cl_eval1}')
+    if torch.max(torch.abs(output_native_eval - output_cl_eval2)) > tol:
+        raise RuntimeError(f'\nEval 2\nnative = {output_native_eval}\ncl = {output_cl_eval2}')
+    # Return elapsed times
+    return torch.as_tensor((native_train_time, cl_train_time, native_eval_time, cl_eval1_time, cl_eval2_time), dtype=torch.float32, device='cpu')

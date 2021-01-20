@@ -10,9 +10,7 @@ DIMS_START, DIMS_END = 2, 5 + 1
 
 def main():
     print('--- START Linear')
-    sum_native_time = 0
-    sum_cl_time = 0
-    sum_cl_cached_time = 0
+    times_sum = torch.zeros(5, dtype=torch.float32, device='cpu')
     case = 1
     NativeModule = torch.nn.Linear
     for dimension in DIMENSIONS:
@@ -22,12 +20,14 @@ def main():
                 for in_features in range(DIMS_START, DIMS_END):
                     for out_features in range(DIMS_START, DIMS_END):
                         print(f'CASE #{case}: batches={batches}, other_dims={*other_dims,}, in_features={in_features}, out_features={out_features}')
-                        native_time, cl_time, cl_cached_time = unit_test(batches, (*other_dims, in_features), NativeModule(in_features=in_features, out_features=out_features, bias=False))
-                        sum_native_time += native_time
-                        sum_cl_time += cl_time
-                        sum_cl_cached_time += cl_cached_time
+                        times_sum += unit_test(batches, (*other_dims, in_features), NativeModule(in_features=in_features, out_features=out_features, bias=False))
                         case += 1
-    print(f'--- Native: {sum_native_time / (case - 1)} sec; CL: {sum_cl_time / (case - 1)} sec; Cached CL: {sum_cl_cached_time / (case - 1)} sec')
+    print(f'  - Train')
+    print(f'    Native: {times_sum[0] / (case - 1): 1.8f} sec; \tCL: {times_sum[1] / (case - 1): 1.8f} sec')
+    print(f'  - Eval 1')
+    print(f'    Native: {times_sum[2] / (case - 1): 1.8f} sec; \tCL: {times_sum[3] / (case - 1): 1.8f} sec')
+    print(f'  - Eval 2')
+    print(f'    Native: {times_sum[2] / (case - 1): 1.8f} sec; \tCL: {times_sum[4] / (case - 1): 1.8f} sec')
     print('--- END AvgPool')
 
 

@@ -1,29 +1,95 @@
-from .module import ConformalModule
-from .utils import ScalarTensor, SparseTensor, SizeAny
+from .module import ConformalModule, ForwardMinkowskiData, ForwardTorchData
+from .utils import ScalarTensor, SizeAny
 from abc import abstractmethod
 from collections import OrderedDict
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
 import math, numpy, torch
+
+
+class WrappedMinkowskiSRePro(torch.nn.Module):
+    def __init__(self,
+                 owner: ConformalModule) -> None:
+        super(WrappedMinkowskiSRePro, self).__init__()
+        self._owner = (owner,) # We use a tuple to avoid infinite recursion while PyTorch traverses the module's tree
+
+    def forward(self, input: ForwardMinkowskiData) -> ForwardMinkowskiData:
+        raise RuntimeError('Illegal call to the forward function. ConformalLayers was developed to evaluate the SRePro activation function differently in this module.')
+
+    def to_tensor(self, alpha_upper: ScalarTensor) -> Tuple[ScalarTensor, ScalarTensor]:
+        # Get the alpha parameter
+        alpha = alpha_upper if self.owner.alpha is None else torch.as_tensor(self.owner.alpha, dtype=alpha_upper.dtype, device=alpha_upper.device)
+        # Compute the last coefficient of the matrix
+        matrix_scalar = alpha / 2
+        # Compute the coefficient on the main diagonal of the last slice of the tensor
+        tensor_scalar = 1 / (2 * alpha)
+        # Return the scalars of the tensor representation of the activation function
+        return matrix_scalar, tensor_scalar
+
+    @property
+    def owner(self) -> ConformalModule:
+        return self._owner[0]
+
+
+class WrappedTorchSRePro(torch.nn.Module):
+    def __init__(self,
+                 owner: ConformalModule) -> None:
+        super(WrappedTorchSRePro, self).__init__()
+        self._owner = (owner,) # We use a tuple to avoid infinite recursion while PyTorch traverses the module's tree
+
+    def forward(self, input: ForwardTorchData) -> ForwardTorchData:
+        (input, input_extra), alpha_upper = input
+        batches, *in_dims = input.shape
+        # Get the alpha parameter
+        alpha = alpha_upper if self.owner.alpha is None else torch.as_tensor(self.owner.alpha, dtype=input.dtype, device=input.device)
+        # Apply the activation function
+        flatted_input = input.view(batches, -1)
+        input_sqr_norm = (flatted_input * flatted_input).sum(dim=1).view(batches, *map(lambda _: 1, range(len(in_dims))))
+        output_extra = (input_sqr_norm + input_extra * (alpha * alpha)) / (2 * alpha)
+        alpha_upper = torch.as_tensor(1, dtype=alpha_upper.dtype, device=alpha_upper.device)
+        # Return the result
+        return (input, output_extra), alpha_upper
+
+    def to_tensor(self, alpha_upper: ScalarTensor) -> Tuple[ScalarTensor, ScalarTensor]:
+        raise RuntimeError('Illegal call to the forward function. ConformalLayers was developed to evaluate the SRePro activation function differently in this module.')
+
+    @property
+    def owner(self) -> ConformalModule:
+        return self._owner[0]
 
 
 class BaseActivation(ConformalModule):
     def __init__(self,
                  *, name: Optional[str]=None) -> None:
-        super(BaseActivation, self).__init__(None, name=name)
+        super(BaseActivation, self).__init__(name=name)
 
     @abstractmethod
-    def to_tensor(self, previous: SparseTensor) -> Tuple[Optional[ScalarTensor], Optional[ScalarTensor]]:
+    def to_tensor(self, alpha_upper: ScalarTensor) -> Tuple[Optional[ScalarTensor], Optional[ScalarTensor]]:
         pass
 
 
 class NoActivation(BaseActivation):
     def __init__(self) -> None:
         super(NoActivation, self).__init__()
+        self._identity_module = torch.nn.Identity()
 
-    def to_tensor(self, previous: SparseTensor) -> Tuple[None, None]:
+    def forward(self, input: Union[ForwardMinkowskiData, ForwardTorchData]) -> Union[ForwardMinkowskiData, ForwardTorchData]:
+        return input
+
+    def output_dims(self, *in_dims: int) -> SizeAny:
+        return (*in_dims,)
+
+    def to_tensor(self, alpha_upper: ScalarTensor) -> Tuple[None, None]:
         matrix_scalar = None
         tensor_scalar = None
         return matrix_scalar, tensor_scalar
+
+    @property
+    def minkowski_module(self) -> torch.nn.Module:
+        return self._identity_module
+
+    @property
+    def torch_module(self) -> torch.nn.Module:
+        return self._identity_module
 
 
 class SRePro(BaseActivation):
@@ -32,30 +98,33 @@ class SRePro(BaseActivation):
                  *, name: Optional[str]=None) -> None:
         super(SRePro, self).__init__(name=name)
         self._alpha = alpha
+        self._torch_module = WrappedTorchSRePro(self)
+        self._minkowski_module = WrappedMinkowskiSRePro(self)
 
     def _repr_dict(self) -> OrderedDict:
         entries = super()._repr_dict()
         entries['alpha'] = 'Automatic' if self._alpha is None else self._alpha
         return entries
 
-    def output_dims(self, *in_dims: int) -> SizeAny:
-        return in_dims
+    def forward(self, input: Union[ForwardMinkowskiData, ForwardTorchData]) -> Union[ForwardMinkowskiData, ForwardTorchData]:
+        native_module = self._torch_module if self.training else self._minkowski_module
+        return native_module(input)
 
-    def to_tensor(self, previous: SparseTensor) -> Tuple[ScalarTensor, ScalarTensor]:
-        # Compute the alpha parameter
-        if self._alpha is None:
-            min_dim = numpy.argmin(previous.shape)
-            symmetric = torch.sparse.mm(previous, previous.t()) if min_dim == 0 else torch.sparse.mm(previous.t(), previous)
-            alpha = torch.sqrt(math.sqrt(symmetric._nnz()) * symmetric._values().max())  # See https://mathoverflow.net/questions/111633/upper-bound-on-largest-eigenvalue-of-a-real-symmetric-nn-matrix-with-all-main-d
-        else:
-            alpha = torch.as_tensor(self.alpha, dtype=previous.dtype, device=previous.device)
-        # Compute the last coefficient of the matrix
-        matrix_scalar = alpha / 2
-        # Compute the coefficient on the main diagonal of the last slice of the tensor
-        tensor_scalar = 1 / (2 * alpha)
-        # Return the scalars of the tensor representation of the activation function
-        return matrix_scalar, tensor_scalar
+    def output_dims(self, *in_dims: int) -> SizeAny:
+        return (*in_dims,)
+
+    def to_tensor(self, alpha_upper: ScalarTensor) -> Tuple[ScalarTensor, ScalarTensor]:
+        native_module = self._torch_module if self.training else self._minkowski_module
+        return native_module.to_tensor(alpha_upper)
     
+    @property
+    def minkowski_module(self) -> torch.nn.Module:
+        return self._minkowski_module
+
+    @property
+    def torch_module(self) -> torch.nn.Module:
+        return self._torch_module
+
     @property
     def alpha(self) -> Optional[float]:
         return self._alpha

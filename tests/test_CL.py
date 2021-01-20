@@ -31,9 +31,9 @@ def main():
         [cl.Conv1d(in_channels=1, out_channels=1, kernel_size=4, stride=1, padding=1, dilation=1),
          cl.AvgPool1d(kernel_size=3, stride=2, padding=0),
          cl.SRePro(alpha=30)]]
-    layers[0][0].kernel.data.copy_(torch.as_tensor([7, -8, -8, 10, 9], dtype=torch.float32).view(5, 1, 1))
-    layers[1][0].kernel.data.copy_(torch.as_tensor([2, 8, 3], dtype=torch.float32).view(3, 1, 1))
-    layers[2][0].kernel.data.copy_(torch.as_tensor([8, -5, 0, -7], dtype=torch.float32).view(4, 1, 1))
+    layers[0][0].weight.data.copy_(torch.as_tensor([7, -8, -8, 10, 9], dtype=torch.float32).view(1, 1, 5))
+    layers[1][0].weight.data.copy_(torch.as_tensor([2, 8, 3], dtype=torch.float32).view(1, 1, 3))
+    layers[2][0].weight.data.copy_(torch.as_tensor([8, -5, 0, -7], dtype=torch.float32).view(1, 1, 4))
     # Expected output
     expected = [
         torch.as_tensor([[[0.0025009, -0.00426723, 0.00260744, -0.00108223, 0.0032607, -0.00447751, -0.000361677, 0.00495975, -0.00483358, -0.000314014, 0.000381303]]], dtype=torch.float32),
@@ -45,9 +45,21 @@ def main():
         for l in range(k):
             modules += layers[l]
         net = cl.ConformalLayers(*modules).to(DEVICE)
-        output = net(input)
-        if torch.max(torch.abs(expected[k-1] - output)) > tol:
-            raise RuntimeError(f'expected = {expected[k-1]}\n  output = {output}')
+        #
+        net.train()
+        output_train = net(input)
+        if torch.max(torch.abs(expected[k-1] - output_train)) > tol:
+            raise RuntimeError(f'expected = {expected[k-1]}\n  output_train = {output_train}')
+        #
+        net.eval()
+        output_eval1 = net(input)
+        if torch.max(torch.abs(expected[k-1] - output_eval1)) > tol:
+            raise RuntimeError(f'expected = {expected[k-1]}\n  output_eval1 = {output_eval1}')
+        #
+        net.eval()
+        output_eval2 = net(input)
+        if torch.max(torch.abs(expected[k-1] - output_eval2)) > tol:
+            raise RuntimeError(f'expected = {expected[k-1]}\n  output_eval2 = {output_eval2}')
     print('--- END CL')
 
 
