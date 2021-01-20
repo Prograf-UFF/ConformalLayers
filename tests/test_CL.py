@@ -11,6 +11,12 @@ import warnings, torch
 DEVICE = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
 torch.cuda.set_device(DEVICE) if DEVICE.type == 'cuda' else warnings.warn(f'The device was set to {DEVICE}.', RuntimeWarning)
 
+# Device to run the workload
+DEVICE = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
+if DEVICE.type == 'cuda':
+    torch.cuda.set_device(DEVICE)
+else:
+    print('Warning: The device was set to CPU.')
 
 def main():
     tol = 1e-6
@@ -36,9 +42,9 @@ def main():
     layers[2][0].weight.data.copy_(torch.as_tensor([8, -5, 0, -7], dtype=torch.float32).view(1, 1, 4))
     # Expected output
     expected = [
-        torch.as_tensor([[[0.0025009, -0.00426723, 0.00260744, -0.00108223, 0.0032607, -0.00447751, -0.000361677, 0.00495975, -0.00483358, -0.000314014, 0.000381303]]], dtype=torch.float32),
-        torch.as_tensor([[[-0.000517973, 0.000566045, -0.000730433, 0.00100908, -0.00149525]]], dtype=torch.float32),
-        torch.as_tensor([[[0.000261716]]], dtype=torch.float32)]
+        torch.as_tensor([[[0.0025009, -0.00426723, 0.00260744, -0.00108223, 0.0032607, -0.00447751, -0.000361677, 0.00495975, -0.00483358, -0.000314014, 0.000381303]]], dtype=torch.float32, device=DEVICE),
+        torch.as_tensor([[[-0.000517973, 0.000566045, -0.000730433, 0.00100908, -0.00149525]]], dtype=torch.float32, device=DEVICE),
+        torch.as_tensor([[[0.000261716]]], dtype=torch.float32, device=DEVICE)]
     # Build newtworks using layers from 1 to k, where k = 1, 2, 3
     for k in range(1, len(layers) + 1):
         modules = []
