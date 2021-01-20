@@ -15,7 +15,7 @@ class WrappedMinkowskiConvolution(WrappedMinkowskiStridedOperation):
         self._function = me.MinkowskiConvolutionFunction()
         
     def _apply_function(self, input: me.SparseTensor, alpha_upper: ScalarTensor, region_type: me.RegionType, region_offset: torch.IntTensor, out_coords_key: me.CoordsKey) -> Tuple[DenseTensor, ScalarTensor]:
-        kernel = torch.FloatTensor(self.kernel_generator.kernel_volume, self.owner.in_channels, self.owner.out_channels)
+        kernel = torch.empty((self.kernel_generator.kernel_volume, self.owner.in_channels, self.owner.out_channels), dtype=self.owner.weight.dtype, device=self.owner.weight.device)
         kernel.copy_(self.owner.weight.T.reshape(*kernel.shape)) # We don't know why Minkowski Engine convolution does not work with the view
         out_feats = self._function.apply(input.feats, kernel, input.tensor_stride, 1, self.owner.kernel_size, self.owner.dilation, region_type, region_offset, input.coords_key, out_coords_key, input.coords_man)
         alpha_upper = alpha_upper * torch.linalg.norm(self.owner.weight.view(-1), ord=1) # Apply the Young's convolution inequality with p = 2, q = 1, and r = 2 (https://en.m.wikipedia.org/wiki/Young%27s_convolution_inequality).
@@ -82,7 +82,7 @@ class ConvNd(ConformalModule):
             return self._minkowski_module(input)
 
     def output_dims(self, in_channels: int, *in_volume: int) -> SizeAny:
-        return self.out_channels, *map(int, (torch.as_tensor(in_volume, dtype=torch.int32, device='cpu') + 2 * self.padding - self.dilation * (self.kernel_size - 1) - 1) // self.stride + 1)
+        return (self.out_channels, *map(int, (torch.as_tensor(in_volume, dtype=torch.int32, device='cpu') + 2 * self.padding - self.dilation * (self.kernel_size - 1) - 1) // self.stride + 1))
 
     @property
     def minkowski_module(self) -> torch.nn.Module:
@@ -231,7 +231,7 @@ class ConvTransposeNd(ConformalModule):
             return self._minkowski_module(input)
 
     def output_dims(self, in_channels: int, *in_volume: int) -> SizeAny:
-        return self.out_channels, *map(int, (torch.as_tensor(in_volume, dtype=torch.int32, device='cpu') - 1) * self.stride - 2 * self.padding + self.output_padding + self.dilation * (self.kernel_size - 1) + 1)
+        return (self.out_channels, *map(int, (torch.as_tensor(in_volume, dtype=torch.int32, device='cpu') - 1) * self.stride - 2 * self.padding + self.output_padding + self.dilation * (self.kernel_size - 1) + 1))
 
     @property
     def minkowski_module(self) -> torch.nn.Module:

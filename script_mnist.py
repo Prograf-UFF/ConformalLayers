@@ -15,7 +15,7 @@ except ModuleNotFoundError:
     import cl
 
 from Experiments.utils.utils import progress_bar
-from utils import Stopwatch
+from Experiments.utils.stopwatch import Stopwatch
 
 
 # Device to run the workload
@@ -65,7 +65,7 @@ net = cl.ConformalLayers(
 
 criterion = nn.CrossEntropyLoss()
 
-optimizer = torch.optim.SGD(net.parameters(), lr=0.01, momentum=0.9)
+optimizer = torch.optim.RMSprop(net.parameters())#, lr=0.01, momentum=0.9)
 
 trainloader, testloader = get_dataset()
 

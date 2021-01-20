@@ -53,7 +53,7 @@ class AvgPoolNd(ConformalModule):
             return self._minkowski_module(input)
 
     def output_dims(self, in_channels: int, *in_volume: int) -> SizeAny:
-        return in_channels, *map(int, (torch.as_tensor(in_volume, dtype=torch.int32, device='cpu') + 2 * self.padding - (self.kernel_size - 1) - 1) // self.stride + 1)
+        return (in_channels, *map(int, (torch.as_tensor(in_volume, dtype=torch.int32, device='cpu') + 2 * self.padding - (self.kernel_size - 1) - 1) // self.stride + 1))
 
     @property
     def minkowski_module(self) -> torch.nn.Module:

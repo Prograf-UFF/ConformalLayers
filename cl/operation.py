@@ -3,7 +3,7 @@ from .utils import SizeAny
 from collections import OrderedDict
 from typing import Optional, Union
 import MinkowskiEngine as me
-import torch
+import numpy, torch
 
 
 class Linear(ConformalModule):
@@ -21,15 +21,17 @@ class Linear(ConformalModule):
         return entries
 
     def forward(self, input: Union[ForwardMinkowskiData, ForwardTorchData]) -> Union[ForwardMinkowskiData, ForwardTorchData]:
+        weight = self._minkowski_module.linear.weight
         if self.training:
             (input, input_extra), alpha_upper = input
             output = self._minkowski_module.linear(input)
-            alpha_upper = alpha_upper * torch.linalg.norm(self._minkowski_module.linear.weight, ord='fro') # Apply the submultiplicative property of matrix norms, and the property that relates the L2-norm and the Frobenius norm of matrices (https://www.math.usm.edu/lambers/mat610/sum10/lecture2.pdf).
+            alpha_upper = alpha_upper * torch.linalg.norm(weight, ord=2) # Apply the submultiplicative property of matrix norms (https://www.math.usm.edu/lambers/mat610/sum10/lecture2.pdf).
             return (output, input_extra), alpha_upper
         else:
             input, alpha_upper = input
-            alpha_upper = alpha_upper * torch.linalg.norm(self._minkowski_module.linear.weight, ord='fro') # Apply the submultiplicative property of matrix norms, and the property that relates the L2-norm and the Frobenius norm of matrices (https://www.math.usm.edu/lambers/mat610/sum10/lecture2.pdf).
-            return (output, input_extra), alpha_upper
+            output = self._minkowski_module(input)
+            alpha_upper = alpha_upper * torch.linalg.norm(weight, ord=2) # Apply the submultiplicative property of matrix norms (https://www.math.usm.edu/lambers/mat610/sum10/lecture2.pdf).
+            return output, alpha_upper
 
     def output_dims(self, *in_size: int) -> SizeAny:
         return (*in_size[:-1], self.out_features)

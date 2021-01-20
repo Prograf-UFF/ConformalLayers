@@ -25,6 +25,7 @@ class Dropout(ConformalModule):
             (input, input_extra), alpha_upper = input
             return (self._minkowski_module.module(input), input_extra), alpha_upper
         else:
+            input, alpha_upper = input
             return self._minkowski_module(input), alpha_upper
 
     def output_dims(self, *in_dims: int) -> SizeAny:
