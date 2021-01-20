@@ -5,7 +5,7 @@ except ModuleNotFoundError:
     sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
     import cl
 
-import warnings, torch
+import time, torch, warnings
 
 
 DEVICE = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
@@ -53,19 +53,29 @@ def main():
         net = cl.ConformalLayers(*modules).to(DEVICE)
         #
         net.train()
+        start_time = time.time()
         output_train = net(input)
+        train_time = time.time() - start_time
         if torch.max(torch.abs(expected[k-1] - output_train)) > tol:
             raise RuntimeError(f'expected = {expected[k-1]}\n  output_train = {output_train}')
         #
         net.eval()
+        start_time = time.time()
         output_eval1 = net(input)
+        eval1_time = time.time() - start_time
         if torch.max(torch.abs(expected[k-1] - output_eval1)) > tol:
             raise RuntimeError(f'expected = {expected[k-1]}\n  output_eval1 = {output_eval1}')
         #
         net.eval()
+        start_time = time.time()
         output_eval2 = net(input)
+        eval2_time = time.time() - start_time
         if torch.max(torch.abs(expected[k-1] - output_eval2)) > tol:
             raise RuntimeError(f'expected = {expected[k-1]}\n  output_eval2 = {output_eval2}')
+        print(f'  --- Case {k}')
+        print(f'    Train : {train_time: 1.8f} sec')
+        print(f'    Eval 1: {eval1_time: 1.8f} sec')
+        print(f'    Eval 2: {eval2_time: 1.8f} sec')
     print('--- END CL')
 
 
