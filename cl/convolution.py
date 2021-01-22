@@ -13,11 +13,11 @@ class WrappedMinkowskiConvolution(WrappedMinkowskiStridedOperation):
             owner,
             transposed=False)
         self._function = me.MinkowskiConvolutionFunction()
+        self._kernel = torch.empty((self.kernel_volume, owner.in_channels, owner.out_channels), dtype=owner.weight.dtype, device=owner.weight.device)
         
-    def _apply_function(self, input: me.SparseTensor, alpha_upper: ScalarTensor, region_type: me.RegionType, region_offset: torch.IntTensor, out_coords_key: me.CoordsKey) -> Tuple[DenseTensor, ScalarTensor]:
-        kernel = torch.empty((self.kernel_generator.kernel_volume, self.owner.in_channels, self.owner.out_channels), dtype=self.owner.weight.dtype, device=self.owner.weight.device)
-        kernel.copy_(self.owner.weight.T.reshape(*kernel.shape)) # We don't know why Minkowski Engine convolution does not work with the view
-        out_feats = self._function.apply(input.feats, kernel, input.tensor_stride, 1, self.owner.kernel_size, self.owner.dilation, region_type, region_offset, input.coords_key, out_coords_key, input.coords_man)
+    def _apply_function(self, input: me.SparseTensor, alpha_upper: ScalarTensor, out_coords_key: me.CoordsKey) -> Tuple[DenseTensor, ScalarTensor]:
+        self._kernel.copy_(self.owner.weight.T.reshape(*self._kernel.shape)) # We don't know why Minkowski Engine convolution does not work with the view
+        out_feats = self._function.apply(input.feats, self._kernel, input.tensor_stride, 1, self.owner.kernel_size, self.owner.dilation, self.kernel_region_type, self.kernel_region_offset, input.coords_key, out_coords_key, input.coords_man)
         alpha_upper = alpha_upper * torch.linalg.norm(self.owner.weight.view(-1), ord=1) # Apply the Young's convolution inequality with p = 2, q = 1, and r = 2 (https://en.m.wikipedia.org/wiki/Young%27s_convolution_inequality).
         return out_feats, alpha_upper
 
@@ -29,11 +29,11 @@ class WrappedMinkowskiConvolutionTranspose(WrappedMinkowskiStridedOperation):
             owner,
             transposed=True)
         self._function = me.MinkowskiConvolutionTransposeFunction()
+        self._kernel = self.owner.weight.permute(1, 0, *range(2, owner.weight.dim())).T.view(self.kernel_volume, owner.in_channels, owner.out_channels)
         raise NotImplementedError() #TODO Como lidar com output_padding durante a avaliação do módulo?
 
-    def _apply_function(self, input: me.SparseTensor, alpha_upper: ScalarTensor, region_type: me.RegionType, region_offset: torch.IntTensor, out_coords_key: me.CoordsKey) -> Tuple[DenseTensor, ScalarTensor]:
-        kernel = self.owner.weight.permute(1, 0, *range(2, self.owner.weight.dim())).T.view(self.kernel_generator.kernel_volume, self.owner.in_channels, self.owner.out_channels)
-        out_feats = self._function.apply(input.feats, self.kernel, input.tensor_stride, 1, self.kernel_size, self.dilation, region_type, region_offset, False, input.coords_key, out_coords_key, input.coords_man)
+    def _apply_function(self, input: me.SparseTensor, alpha_upper: ScalarTensor, out_coords_key: me.CoordsKey) -> Tuple[DenseTensor, ScalarTensor]:
+        out_feats = self._function.apply(input.feats, self._kernel, input.tensor_stride, 1, self.kernel_size, self.dilation, self.kernel_region_type, self.kernel_region_offset, False, input.coords_key, out_coords_key, input.coords_man)
         alpha_upper = alpha_upper * torch.linalg.norm(self.owner.weight.view(-1), ord=1) # Apply the Young's convolution inequality with p = 2, q = 1, and r = 2 (https://en.m.wikipedia.org/wiki/Young%27s_convolution_inequality).
         return out_feats, alpha_upper
 
@@ -83,14 +83,6 @@ class ConvNd(ConformalModule):
 
     def output_dims(self, in_channels: int, *in_volume: int) -> SizeAny:
         return (self.out_channels, *map(int, (torch.as_tensor(in_volume, dtype=torch.int32, device='cpu') + 2 * self.padding - self.dilation * (self.kernel_size - 1) - 1) // self.stride + 1))
-
-    @property
-    def minkowski_module(self) -> torch.nn.Module:
-        return self._minkowski_module
-
-    @property
-    def torch_module(self) -> torch.nn.Module:
-        return self._torch_module
 
     @property
     def in_channels(self) -> int:
@@ -232,14 +224,6 @@ class ConvTransposeNd(ConformalModule):
 
     def output_dims(self, in_channels: int, *in_volume: int) -> SizeAny:
         return (self.out_channels, *map(int, (torch.as_tensor(in_volume, dtype=torch.int32, device='cpu') - 1) * self.stride - 2 * self.padding + self.output_padding + self.dilation * (self.kernel_size - 1) + 1))
-
-    @property
-    def minkowski_module(self) -> torch.nn.Module:
-        return self._minkowski_module
-
-    @property
-    def torch_module(self) -> torch.nn.Module:
-        return self._torch_module
 
     @property
     def in_channels(self) -> int:

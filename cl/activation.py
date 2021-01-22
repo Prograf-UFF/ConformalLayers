@@ -83,14 +83,6 @@ class NoActivation(BaseActivation):
         tensor_scalar = None
         return matrix_scalar, tensor_scalar
 
-    @property
-    def minkowski_module(self) -> torch.nn.Module:
-        return self._identity_module
-
-    @property
-    def torch_module(self) -> torch.nn.Module:
-        return self._identity_module
-
 
 class SRePro(BaseActivation):
     def __init__(self,
@@ -117,14 +109,6 @@ class SRePro(BaseActivation):
         native_module = self._torch_module if self.training else self._minkowski_module
         return native_module.to_tensor(alpha_upper)
     
-    @property
-    def minkowski_module(self) -> torch.nn.Module:
-        return self._minkowski_module
-
-    @property
-    def torch_module(self) -> torch.nn.Module:
-        return self._torch_module
-
     @property
     def alpha(self) -> Optional[float]:
         return self._alpha

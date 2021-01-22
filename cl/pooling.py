@@ -12,11 +12,11 @@ class WrappedMinkowskiAvgPooling(WrappedMinkowskiStridedOperation):
         super(WrappedMinkowskiAvgPooling, self).__init__(
             owner,
             transposed=False)
-        self._kernel_entry = 1 / float(torch.prod(owner.kernel_size))
         self._function = me.MinkowskiAvgPoolingFunction()
+        self._kernel_entry = 1 / float(torch.prod(owner.kernel_size))
         
-    def _apply_function(self, input: me.SparseTensor, alpha_upper: ScalarTensor, region_type: me.RegionType, region_offset: torch.IntTensor, out_coords_key: me.CoordsKey) -> Tuple[DenseTensor, ScalarTensor]:
-        out_feats = self._function.apply(input.feats, input.tensor_stride, 1, self.owner.kernel_size, 1, region_type, region_offset, False, input.coords_key, out_coords_key, input.coords_man)
+    def _apply_function(self, input: me.SparseTensor, alpha_upper: ScalarTensor, out_coords_key: me.CoordsKey) -> Tuple[DenseTensor, ScalarTensor]:
+        out_feats = self._function.apply(input.feats, input.tensor_stride, 1, self.owner.kernel_size, 1, self.kernel_region_type, self.kernel_region_offset, False, input.coords_key, out_coords_key, input.coords_man)
         out_feats = out_feats * self._kernel_entry
         return out_feats, alpha_upper # Apply the Young's convolution inequality with p = 2, q = 1, and r = 2 (https://en.m.wikipedia.org/wiki/Young%27s_convolution_inequality). Recall that the L1-norm of the mean kernel is 1, so alpha_upper * 1 = alpha_upper.
 
@@ -54,14 +54,6 @@ class AvgPoolNd(ConformalModule):
 
     def output_dims(self, in_channels: int, *in_volume: int) -> SizeAny:
         return (in_channels, *map(int, (torch.as_tensor(in_volume, dtype=torch.int32, device='cpu') + 2 * self.padding - (self.kernel_size - 1) - 1) // self.stride + 1))
-
-    @property
-    def minkowski_module(self) -> torch.nn.Module:
-        return self._minkowski_module
-
-    @property
-    def torch_module(self) -> torch.nn.Module:
-        return self._torch_module
 
     @property
     def dilation(self) -> int:

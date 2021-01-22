@@ -33,18 +33,8 @@ class ConformalModule(torch.nn.Module):
         pass
 
     @property
-    @abstractmethod
-    def minkowski_module(self) -> torch.nn.Module:
-        pass
-
-    @property
     def name(self) -> Optional[str]:
         return self._name
-
-    @property
-    @abstractmethod
-    def torch_module(self) -> torch.nn.Module:
-        pass
 
 
 class WrappedMinkowskiStridedOperation(torch.nn.Module):
@@ -54,8 +44,8 @@ class WrappedMinkowskiStridedOperation(torch.nn.Module):
         super(WrappedMinkowskiStridedOperation, self).__init__()
         # Declare basic properties
         self._owner = (owner,) # We use a tuple to avoid infinite recursion while PyTorch traverses the module's tree
-        self._transposed = transposed
-        self._kernel_generator = me.KernelGenerator(kernel_size=owner.kernel_size, stride=1, dilation=owner.dilation, dimension=len(owner.kernel_size))
+        kernel_generator = me.KernelGenerator(kernel_size=owner.kernel_size, stride=1, dilation=owner.dilation, dimension=len(owner.kernel_size))
+        self._kernel_region_type, self._kernel_region_offset, self._kernel_volume = kernel_generator.get_kernel((*map(lambda _: 1, range(len(owner.kernel_size))),), transposed)
         # Compute some constant values and keep them
         kernel_origin = owner.dilation * ((owner.kernel_size - 1) // 2) * (owner.kernel_size % 2)
         dilated_kernel_size = owner.dilation * (owner.kernel_size - 1) + 1
@@ -65,7 +55,7 @@ class WrappedMinkowskiStridedOperation(torch.nn.Module):
         self._index_end_offset = kernel_origin + owner.padding - dilated_kernel_size + 2
 
     @abstractmethod
-    def _apply_function(self, input: me.SparseTensor, alpha_upper: ScalarTensor, region_type: me.RegionType, region_offset: torch.IntTensor, out_coords_key: me.CoordsKey) -> Tuple[DenseTensor, ScalarTensor]:
+    def _apply_function(self, input: me.SparseTensor, alpha_upper: ScalarTensor, out_coords_key: me.CoordsKey) -> Tuple[DenseTensor, ScalarTensor]:
         pass
 
     def forward(self, input: ForwardMinkowskiData) -> ForwardMinkowskiData:
@@ -80,11 +70,9 @@ class WrappedMinkowskiStridedOperation(torch.nn.Module):
             torch.min(index_end, ((indices.max(0)[0] + self._kernel_end_offset - index_start) // self.owner.stride + 1) * self.owner.stride + index_start),
             self.owner.stride)), dim=-1).view(-1, 1 + input.dimension) for batch, indices in enumerate(indices_per_batch)), dim=0)
         #TODO assert (torch.abs(output.feats) <= 1e-6).all(), 'Os limites do arange(...) precisam ser ajustados, pois coordenadas irrelevantes são geradas em casos a serem investigados
-        # Create a region_type, region_offset, and coords_key
-        region_type, region_offset, _ = self._kernel_generator.get_kernel(input.tensor_stride, self._transposed)
-        out_coords_key = input.coords_man.create_coords_key(out_coords, tensor_stride=1, force_creation=True, force_remap=True, allow_duplicate_coords=True)
         # Evaluate the module
-        out_feats, alpha_upper = self._apply_function(input, alpha_upper, region_type, region_offset, out_coords_key)
+        out_coords_key = input.coords_man.create_coords_key(out_coords, tensor_stride=1, force_creation=True, force_remap=True, allow_duplicate_coords=True)
+        out_feats, alpha_upper = self._apply_function(input, alpha_upper, out_coords_key)
         # Map the first indices to zeros and compress the resulting coordinates when needed
         if (index_start != 0).any():
             out_coords[:, 1:] -= index_start
@@ -99,13 +87,17 @@ class WrappedMinkowskiStridedOperation(torch.nn.Module):
         return output, alpha_upper
 
     @property
+    def kernel_region_offset(self) -> torch.IntTensor:
+        return self._kernel_region_offset
+
+    @property
+    def kernel_region_type(self) -> me.RegionType:
+        return self._kernel_region_type
+        
+    @property
+    def kernel_volume(self) -> int:
+        return self._kernel_volume
+
+    @property
     def owner(self) -> ConformalModule:
         return self._owner[0]
-
-    @property
-    def transposed(self) -> bool:
-        return self._transposed
-
-    @property
-    def kernel_generator(self) -> me.KernelGenerator:
-        return self._kernel_generator

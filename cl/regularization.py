@@ -32,14 +32,6 @@ class Dropout(ConformalModule):
         return (*in_dims,)
 
     @property
-    def minkowski_module(self) -> torch.nn.Module:
-        return self._minkowski_module
-
-    @property
-    def torch_module(self) -> torch.nn.Module:
-        return self._minkowski_module.module
-
-    @property
     def p(self) -> float:
         return self._minkowski_module.module.p
 
