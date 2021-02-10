@@ -4,6 +4,8 @@ from abc import abstractmethod
 from collections import OrderedDict
 from typing import Optional, Tuple, Union
 import math, numpy, torch
+import os
+import glob
 
 
 class WrappedMinkowskiSRePro(torch.nn.Module):
@@ -43,9 +45,29 @@ class WrappedTorchSRePro(torch.nn.Module):
         alpha = alpha_upper if self.owner.alpha is None else torch.as_tensor(self.owner.alpha, dtype=input.dtype, device=input.device)
         # Apply the activation function
         flatted_input = input.view(batches, -1)
-        input_sqr_norm = (flatted_input * flatted_input).sum(dim=1).view(batches, *map(lambda _: 1, range(len(in_dims))))
+        input_sqr_norm = (flatted_input * flatted_input).sum(dim=1).unsqueeze(1)
         output_extra = (input_sqr_norm + input_extra * (alpha * alpha)) / (2 * alpha)
         alpha_upper = torch.as_tensor(1, dtype=alpha_upper.dtype, device=alpha_upper.device)
+
+        # N_BATCHES_PER_EPOCH, N_ACTIVATION_LAYERS = 15, 3
+        # path = os.path.join('Experiments', 'Tensors')
+        # idx = len(glob.glob(os.path.join(path, '*.pth')))
+        # EPOCH = idx // (N_BATCHES_PER_EPOCH * N_ACTIVATION_LAYERS)
+        # LAYER = idx % N_ACTIVATION_LAYERS
+        # BATCH = (idx // (N_ACTIVATION_LAYERS)) - (EPOCH * N_BATCHES_PER_EPOCH * N_ACTIVATION_LAYERS) + (EPOCH * 30)
+        # print("\n\nEPOCH: ", EPOCH)
+        # print("BATCH: ", BATCH)
+        # print("LAYER: ", LAYER)
+        # print('\n\n')
+        # torch.save({
+        #     'input' : input.detach().cpu(),
+        #     'input_extra' : input_extra.detach().cpu(),
+        #     'alpha' : alpha.detach().cpu(),
+        #     'output_extra' : output_extra.detach().cpu(),
+        # }, os.path.join(path, 'input_epoch_{}_batch_{}_layer_{}.pth'.format(EPOCH, BATCH, LAYER)))
+
+
+
         # Return the result
         return (input, output_extra), alpha_upper
 

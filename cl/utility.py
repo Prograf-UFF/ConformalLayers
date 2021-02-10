@@ -25,9 +25,7 @@ class Flatten(ConformalModule):
         if self.training:
             (input, input_extra), alpha_upper = input
             output = self._torch_module(input)
-            batches, *out_dims = output.shape
-            output_extra = input_extra.view(batches, *map(lambda _: 1, range(len(out_dims))))
-            return (output, output_extra), alpha_upper
+            return (output, input_extra), alpha_upper
         # Evaluate using MinkowskiEngine
         else:
             input, alpha_upper = input

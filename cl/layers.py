@@ -136,10 +136,10 @@ class ConformalLayers(torch.nn.Module):
             # If we are training, then the cache will not be valid for evaluation since the parameters will change
             self.invalidate_cache()
             # Apply the modules as is
-            input_extra = torch.linalg.norm(input.view(batches, -1), ord=2, dim=1).view(batches, *map(lambda _: 1, range(len(in_dims))))
+            input_extra = torch.linalg.norm(input.view(batches, -1), ord=2, dim=1, keepdim=True)
             alpha_upper = torch.as_tensor(1, dtype=input.dtype, device=input.device)
             (output, output_extra), _ = self._modulez(((input, input_extra), alpha_upper))
-            output = output / output_extra
+            output = output / output_extra.view(batches, *map(lambda _: 1, range(1, output.dim())))
         else:
             with torch.no_grad():
                 # Reshape the input as a matrix where each batch entry corresponds to a column 

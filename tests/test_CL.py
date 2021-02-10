@@ -7,16 +7,9 @@ except ModuleNotFoundError:
 
 import time, torch, warnings
 
-
-DEVICE = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
-torch.cuda.set_device(DEVICE) if DEVICE.type == 'cuda' else warnings.warn(f'The device was set to {DEVICE}.', RuntimeWarning)
-
 # Device to run the workload
 DEVICE = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
-if DEVICE.type == 'cuda':
-    torch.cuda.set_device(DEVICE)
-else:
-    print('Warning: The device was set to CPU.')
+torch.cuda.set_device(DEVICE) if DEVICE.type == 'cuda' else warnings.warn(f'The device was set to {DEVICE}.', RuntimeWarning)
 
 def main():
     tol = 1e-6

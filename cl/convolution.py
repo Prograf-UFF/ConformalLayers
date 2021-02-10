@@ -16,9 +16,10 @@ class WrappedMinkowskiConvolution(WrappedMinkowskiStridedOperation):
         self._kernel = torch.empty((self.kernel_volume, owner.in_channels, owner.out_channels), dtype=owner.weight.dtype, device=owner.weight.device)
         
     def _apply_function(self, input: me.SparseTensor, alpha_upper: ScalarTensor, out_coords_key: me.CoordsKey) -> Tuple[DenseTensor, ScalarTensor]:
+        self._kernel = self._kernel.to(self.owner.weight.device)
         self._kernel.copy_(self.owner.weight.T.reshape(*self._kernel.shape)) # We don't know why Minkowski Engine convolution does not work with the view
         out_feats = self._function.apply(input.feats, self._kernel, input.tensor_stride, 1, self.owner.kernel_size, self.owner.dilation, self.kernel_region_type, self.kernel_region_offset, input.coords_key, out_coords_key, input.coords_man)
-        alpha_upper = alpha_upper * torch.linalg.norm(self.owner.weight.view(-1), ord=1) # Apply the Young's convolution inequality with p = 2, q = 1, and r = 2 (https://en.m.wikipedia.org/wiki/Young%27s_convolution_inequality).
+        alpha_upper = alpha_upper * torch.linalg.norm(self.owner.weight.view(self.owner.out_channels, self.owner.in_channels, -1), ord=1, dim=2).sum(dim=0).max() # Apply the Young's convolution inequality with p = 2, q = 1, and r = 2 (https://en.m.wikipedia.org/wiki/Young%27s_convolution_inequality).
         return out_feats, alpha_upper
 
 
@@ -34,7 +35,7 @@ class WrappedMinkowskiConvolutionTranspose(WrappedMinkowskiStridedOperation):
 
     def _apply_function(self, input: me.SparseTensor, alpha_upper: ScalarTensor, out_coords_key: me.CoordsKey) -> Tuple[DenseTensor, ScalarTensor]:
         out_feats = self._function.apply(input.feats, self._kernel, input.tensor_stride, 1, self.kernel_size, self.dilation, self.kernel_region_type, self.kernel_region_offset, False, input.coords_key, out_coords_key, input.coords_man)
-        alpha_upper = alpha_upper * torch.linalg.norm(self.owner.weight.view(-1), ord=1) # Apply the Young's convolution inequality with p = 2, q = 1, and r = 2 (https://en.m.wikipedia.org/wiki/Young%27s_convolution_inequality).
+        alpha_upper = alpha_upper * torch.linalg.norm(self.owner.weight.view(self.owner.in_channels, -1), ord=1, dim=1).max() # Apply the Young's convolution inequality with p = 2, q = 1, and r = 2 (https://en.m.wikipedia.org/wiki/Young%27s_convolution_inequality).
         return out_feats, alpha_upper
 
 
@@ -76,7 +77,7 @@ class ConvNd(ConformalModule):
         if self.training:
             (input, input_extra), alpha_upper = input
             output = self._torch_module(input)
-            alpha_upper = alpha_upper * torch.linalg.norm(self._torch_module.weight.view(-1), ord=1) # Apply the Young's convolution inequality with p = 2, q = 1, and r = 2 (https://en.m.wikipedia.org/wiki/Young%27s_convolution_inequality).
+            alpha_upper = alpha_upper * torch.linalg.norm(self.weight.view(self.out_channels, self.in_channels, -1), ord=1, dim=2).sum(dim=0).max() # Apply the Young's convolution inequality with p = 2, q = 1, and r = 2 (https://en.m.wikipedia.org/wiki/Young%27s_convolution_inequality).
             return (output, input_extra), alpha_upper
         else:
             return self._minkowski_module(input)
@@ -217,7 +218,7 @@ class ConvTransposeNd(ConformalModule):
         if self.training:
             (input, input_extra), alpha_upper = input
             output = self._torch_module(input)
-            alpha_upper = alpha_upper * torch.linalg.norm(self._torch_module.weight.view(-1), ord=1) # Apply the Young's convolution inequality with p = 2, q = 1, and r = 2 (https://en.m.wikipedia.org/wiki/Young%27s_convolution_inequality).
+            alpha_upper = alpha_upper * torch.linalg.norm(self.weight.view(self.in_channels, -1), ord=1, dim=1).max() # Apply the Young's convolution inequality with p = 2, q = 1, and r = 2 (https://en.m.wikipedia.org/wiki/Young%27s_convolution_inequality).
             return (output, input_extra), alpha_upper
         else:
             return self._minkowski_module(input)

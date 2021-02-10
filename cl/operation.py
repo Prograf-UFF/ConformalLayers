@@ -29,10 +29,11 @@ class WrappedMinkowskiLinear(torch.nn.Module):
             torch.min(index_end, (indices.max(0)[0] + 1)))), dim=-1).view(-1, 1 + input.dimension) for batch, indices in enumerate(indices_per_batch)), dim=0)
         #TODO assert (torch.abs(output.feats) <= 1e-6).all(), 'Os limites do arange(...) precisam ser ajustados, pois coordenadas irrelevantes são geradas em casos a serem investigados
         # Evaluate the module
+        self._kernel = self._kernel.to(self.owner.weight.device)
         self._kernel.copy_(self.owner.weight.T.reshape(*self._kernel.shape)) # We don't know why Minkowski Engine convolution does not work with the view
         out_coords_key = input.coords_man.create_coords_key(out_coords, tensor_stride=1, force_creation=True, force_remap=True, allow_duplicate_coords=True)
         out_feats = self._function.apply(input.feats, self._kernel, input.tensor_stride, 1, self._kernel_size, (1,), self._kernel_region_type, self._kernel_region_offset, input.coords_key, out_coords_key, input.coords_man)
-        alpha_upper = alpha_upper * torch.linalg.norm(self.owner.weight, ord=2) # Apply the submultiplicative property of matrix norms (https://www.math.usm.edu/lambers/mat610/sum10/lecture2.pdf).
+        alpha_upper = alpha_upper * torch.linalg.norm(self.owner.weight, ord=1) # Apply the Young's convolution inequality with p = 2, q = 1, and r = 2 (https://en.m.wikipedia.org/wiki/Young%27s_convolution_inequality).
         # Map the first indices to zeros and compress the resulting coordinates when needed
         output = me.SparseTensor(out_feats, coords_key=out_coords_key, coords_manager=input.coords_man)
         return output, alpha_upper
@@ -60,8 +61,10 @@ class Linear(ConformalModule):
     def forward(self, input: Union[ForwardMinkowskiData, ForwardTorchData]) -> Union[ForwardMinkowskiData, ForwardTorchData]:
         if self.training:
             (input, input_extra), alpha_upper = input
+            if input.dim() != 2:
+                raise NotImplementedError() # TODO implement the general case
             output = self._torch_module(input)
-            alpha_upper = alpha_upper * torch.linalg.norm(self._torch_module.weight, ord=2) # Apply the submultiplicative property of matrix norms (https://www.math.usm.edu/lambers/mat610/sum10/lecture2.pdf).
+            alpha_upper = alpha_upper * torch.linalg.norm(self._torch_module.weight, ord=1) # Apply the Young's convolution inequality with p = 2, q = 1, and r = 2 (https://en.m.wikipedia.org/wiki/Young%27s_convolution_inequality).
             return (output, input_extra), alpha_upper
         else:
             return self._minkowski_module(input)
