@@ -43,6 +43,8 @@ class WrappedTorchSRePro(torch.nn.Module):
         batches, *in_dims = input.shape
         # Get the alpha parameter
         alpha = alpha_upper if self.owner.alpha is None else torch.as_tensor(self.owner.alpha, dtype=input.dtype, device=input.device)
+        # Just for logging
+        self._owner[0].log_alpha = alpha.detach().clone()
         # Apply the activation function
         flatted_input = input.view(batches, -1)
         input_sqr_norm = (flatted_input * flatted_input).sum(dim=1).unsqueeze(1)

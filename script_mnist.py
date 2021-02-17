@@ -5,7 +5,7 @@ import torch.backends.cudnn as cudnn
 import torchvision
 import torchvision.transforms as transforms  
 import warnings
-
+import wandb
 
 try:
     import cl
@@ -25,7 +25,8 @@ torch.cuda.set_device(DEVICE) if DEVICE.type == 'cuda' else warnings.warn(f'The 
 
 # The size of the batch
 BATCHSIZE = 4096
-
+wandb.init(project="ConformalLayers_alpha_testing")
+config = wandb.config
 
 # Sets the seed for reproducibility
 torch.manual_seed(1992)
@@ -70,6 +71,7 @@ optimizer = torch.optim.Adam(net.parameters(), lr=0.1)
 
 trainloader, testloader = get_dataset()
 
+wandb.watch(net, log='all', log_freq=1)
 
 def train(epoch, optimizer):
     net.train()
@@ -84,7 +86,7 @@ def train(epoch, optimizer):
 
         with Stopwatch('Train -- Epoch {epoch}, Batch {batch_idx} -- Loss           -- Elapsed time: {et_str}.', {'epoch': epoch, 'batch_idx': batch_idx}):
             loss = criterion(outputs, targets)
-
+        
         with Stopwatch('Train -- Epoch {epoch}, Batch {batch_idx} -- Backward       -- Elapsed time: {et_str}.', {'epoch': epoch, 'batch_idx': batch_idx}):
             loss.backward()
 
@@ -99,10 +101,20 @@ def train(epoch, optimizer):
         correct += predicted.eq(targets).sum().item()
         acc_arr.append(correct / total)
 
+        log_dict = {}
+        log_dict['loss'] = loss
+        log_dict['accuracy'] = correct/total
+        
+        count = 1
+        for layer in net:
+            if hasattr(layer, "_alpha"):
+                log_dict[type(layer).__name__ + "_{}_alpha".format(count)] = layer.log_alpha
+                count += 1
+
+        wandb.log(log_dict)
         progress_bar(batch_idx, len(trainloader), 'Loss: %.3f | Acc: %.3f%% (%d/%d)\n' % (train_loss/(batch_idx+1), 100.*correct/total, correct, total))
 
     return loss_arr, acc_arr
-
 
 @torch.no_grad()
 def test(epoch):
@@ -134,7 +146,7 @@ def test(epoch):
 train_data = []
 test_data = []
 
-for epoch in range(0, 10):
+for epoch in range(0, 300):
 
     train_data += train(epoch, optimizer)
     # with open('train_results.p', 'wb') as f:
