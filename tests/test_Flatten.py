@@ -1,5 +1,6 @@
 from utils import unit_test
-import numpy, torch
+import numpy
+import torch
 
 
 DIMENSIONS = [1, 2, 3]

@@ -1,6 +1,7 @@
 from itertools import repeat
 from typing import Iterable, Tuple, Union
-import numpy, torch
+import numpy
+import torch
 
 
 def NTuple(n: int) -> Union[Iterable[int], Tuple[int, ...]]:

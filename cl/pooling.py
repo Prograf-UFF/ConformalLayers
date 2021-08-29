@@ -15,10 +15,16 @@ class WrappedMinkowskiAvgPooling(WrappedMinkowskiStridedOperation):
         self._function = me.MinkowskiAvgPoolingFunction()
         self._kernel_entry = 1 / float(torch.prod(owner.kernel_size))
         
-    def _apply_function(self, input: me.SparseTensor, alpha_upper: ScalarTensor, out_coords_key: me.CoordsKey) -> Tuple[DenseTensor, ScalarTensor]:
-        out_feats = self._function.apply(input.feats, input.tensor_stride, 1, self.owner.kernel_size, 1, self.kernel_region_type, self.kernel_region_offset, False, input.coords_key, out_coords_key, input.coords_man)
+    def _apply_function(self, input: me.SparseTensor, alpha_upper: ScalarTensor, out_coords_key: me.CoordsKey)\
+            -> Tuple[DenseTensor, ScalarTensor]:
+        out_feats = self._function.apply(input.feats, input.tensor_stride, 1, self.owner.kernel_size, 1,
+                                         self.kernel_region_type, self.kernel_region_offset, False, input.coords_key,
+                                         out_coords_key, input.coords_man)
         out_feats = out_feats * self._kernel_entry
-        return out_feats, alpha_upper # Apply the Young's convolution inequality with p = 2, q = 1, and r = 2 (https://en.m.wikipedia.org/wiki/Young%27s_convolution_inequality). Recall that the L1-norm of the mean kernel is 1, so alpha_upper * 1 = alpha_upper.
+        # Apply the Young's convolution inequality with p = 2, q = 1, and r = 2
+        # (https://en.m.wikipedia.org/wiki/Young%27s_convolution_inequality).
+        # Recall that the L1-norm of the mean kernel is 1, so alpha_upper * 1 = alpha_upper.
+        return out_feats, alpha_upper
 
 
 class AvgPoolNd(ConformalModule):
@@ -28,7 +34,7 @@ class AvgPoolNd(ConformalModule):
                  kernel_size: SizeAny,
                  stride: Optional[SizeAny],
                  padding: SizeAny,
-                 *, name: Optional[str]=None) -> None:
+                 *, name: Optional[str] = None) -> None:
         super(AvgPoolNd, self).__init__(name=name)
         self._torch_module = self._TORCH_MODULE_CLASS(
             kernel_size=kernel_size,
@@ -45,15 +51,20 @@ class AvgPoolNd(ConformalModule):
         entries['padding'] = tuple(map(int, self.padding))
         return entries
 
-    def forward(self, input: Union[ForwardMinkowskiData, ForwardTorchData]) -> Union[ForwardMinkowskiData, ForwardTorchData]:
+    def forward(self, input: Union[ForwardMinkowskiData, ForwardTorchData])\
+            -> Union[ForwardMinkowskiData, ForwardTorchData]:
         if self.training:
             (input, input_extra), alpha_upper = input
-            return (self._torch_module(input), input_extra), alpha_upper # Apply the Young's convolution inequality with p = 2, q = 1, and r = 2 (https://en.m.wikipedia.org/wiki/Young%27s_convolution_inequality). Recall that the L1-norm of the mean kernel is 1, so alpha_upper * 1 = alpha_upper.
+            # Apply the Young's convolution inequality with p = 2, q = 1, and r = 2
+            # (https://en.m.wikipedia.org/wiki/Young%27s_convolution_inequality).
+            # Recall that the L1-norm of the mean kernel is 1, so alpha_upper * 1 = alpha_upper.
+            return (self._torch_module(input), input_extra), alpha_upper
         else:
             return self._minkowski_module(input)
 
     def output_dims(self, in_channels: int, *in_volume: int) -> SizeAny:
-        return (in_channels, *map(int, (torch.as_tensor(in_volume, dtype=torch.int32, device='cpu') + 2 * self.padding - (self.kernel_size - 1) - 1) // self.stride + 1))
+        return (in_channels, *map(int, (torch.as_tensor(in_volume, dtype=torch.int32, device='cpu') +
+                                        2 * self.padding - (self.kernel_size - 1) - 1) // self.stride + 1))
 
     @property
     def dilation(self) -> int:
@@ -77,9 +88,9 @@ class AvgPool1d(AvgPoolNd):
 
     def __init__(self,
                  kernel_size: IntOrSize1,
-                 stride: Optional[IntOrSize1]=None,
-                 padding: IntOrSize1=0,
-                 *, name: Optional[str]=None) -> None:
+                 stride: Optional[IntOrSize1] = None,
+                 padding: IntOrSize1 = 0,
+                 *, name: Optional[str] = None) -> None:
         super(AvgPool1d, self).__init__(
             kernel_size=Single(kernel_size),
             stride=Single(stride),
@@ -92,9 +103,9 @@ class AvgPool2d(AvgPoolNd):
 
     def __init__(self,
                  kernel_size: IntOrSize2,
-                 stride: Optional[IntOrSize2]=None,
-                 padding: IntOrSize2=0,
-                 *, name: Optional[str]=None) -> None:
+                 stride: Optional[IntOrSize2] = None,
+                 padding: IntOrSize2 = 0,
+                 *, name: Optional[str] = None) -> None:
         super(AvgPool2d, self).__init__(
             kernel_size=Pair(kernel_size),
             stride=Pair(stride),
@@ -107,9 +118,9 @@ class AvgPool3d(AvgPoolNd):
 
     def __init__(self,
                  kernel_size: IntOrSize3,
-                 stride: Optional[IntOrSize3]=None,
-                 padding: IntOrSize3=0,
-                 *, name: Optional[str]=None) -> None:
+                 stride: Optional[IntOrSize3] = None,
+                 padding: IntOrSize3 = 0,
+                 *, name: Optional[str] = None) -> None:
         super(AvgPool3d, self).__init__(
             kernel_size=Triple(kernel_size),
             stride=Triple(stride),

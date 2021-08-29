@@ -6,11 +6,14 @@ except ModuleNotFoundError:
     import cl
 
 from typing import Tuple
-import time, torch, warnings
+import time
+import torch
+import warnings
 
 
 DEVICE = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
-torch.cuda.set_device(DEVICE) if DEVICE.type == 'cuda' else warnings.warn(f'The device was set to {DEVICE}.', RuntimeWarning)
+torch.cuda.set_device(DEVICE) if DEVICE.type == 'cuda' else warnings.warn(f'The device was set to {DEVICE}.',
+                                                                          RuntimeWarning)
 
 
 class NativeNet(object):
@@ -129,7 +132,8 @@ def unit_test(batches: int, in_dims: Tuple[int, ...], *native_modules: torch.nn.
     cl_net.modules.to(DEVICE)
     # Create input data
     input = torch.rand(batches, *in_dims).to(DEVICE)
-    unit_input = input / torch.linalg.norm(input.view(batches, -1), ord=2, dim=1).view(batches, *map(lambda _: 1, range(len(in_dims))))
+    unit_input = input / torch.linalg.norm(input.view(batches, -1), ord=2, dim=1).view(
+        batches, *map(lambda _: 1, range(len(in_dims))))
     # Compute resulting data
     native_net.modules.train()
     start_time = time.time()
@@ -163,4 +167,5 @@ def unit_test(batches: int, in_dims: Tuple[int, ...], *native_modules: torch.nn.
     if torch.max(torch.abs(output_native_eval - output_cl_eval2)) > tol:
         raise RuntimeError(f'\nEval 2\nnative = {output_native_eval}\ncl = {output_cl_eval2}')
     # Return elapsed times
-    return torch.as_tensor((native_train_time, cl_train_time, native_eval_time, cl_eval1_time, cl_eval2_time), dtype=torch.float32, device='cpu')
+    return torch.as_tensor((native_train_time, cl_train_time, native_eval_time, cl_eval1_time, cl_eval2_time),
+                           dtype=torch.float32, device='cpu')

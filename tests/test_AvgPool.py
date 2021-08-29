@@ -1,5 +1,6 @@
 from utils import unit_test
-import numpy, torch
+import numpy
+import torch
 
 
 DIMENSIONS = [1, 2]
@@ -25,8 +26,15 @@ def main():
                         for stride in numpy.ndindex(*numpy.full((dimension,), STRIDE_END - STRIDE_START, dtype=int)):
                             stride = numpy.add(stride, STRIDE_START)
                             for padding in numpy.ndindex(*(kernel_size // 2 + 1)):
-                                print(f'CASE #{case}: batches={batches}, in_channels={in_channels}, in_volume={*in_volume,}, kernel_size={*kernel_size,}, stride={*stride,}, padding={*padding,}')
-                                times_sum += unit_test(batches, (in_channels, *in_volume), NativeModule(kernel_size=tuple(kernel_size), stride=tuple(stride), padding=tuple(padding), ceil_mode=False, count_include_pad=True))
+                                print(f'CASE #{case}: batches={batches}, in_channels={in_channels}, '
+                                      f'in_volume={*in_volume,}, kernel_size={*kernel_size,}, '
+                                      f'stride={*stride,}, padding={*padding,}')
+                                times_sum += unit_test(batches, (in_channels, *in_volume),
+                                                       NativeModule(kernel_size=tuple(kernel_size),
+                                                                    stride=tuple(stride),
+                                                                    padding=tuple(padding),
+                                                                    ceil_mode=False,
+                                                                    count_include_pad=True))
                                 case += 1
     print(f'  - Train')
     print(f'    Native: {times_sum[0] / (case - 1): 1.8f} sec; \tCL: {times_sum[1] / (case - 1): 1.8f} sec')
