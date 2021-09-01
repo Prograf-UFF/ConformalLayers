@@ -25,15 +25,15 @@ def main():
         # Layer 1
         [cl.Conv1d(in_channels=1, out_channels=1, kernel_size=5, stride=1, padding=3, dilation=1),
          cl.AvgPool1d(kernel_size=2, stride=2, padding=0),
-         cl.SRePro(alpha=10)],
+         cl.ReSPro(alpha=10)],
         # Layer 2
         [cl.Conv1d(in_channels=1, out_channels=1, kernel_size=3, stride=1, padding=1, dilation=1),
          cl.AvgPool1d(kernel_size=2, stride=2, padding=0),
-         cl.SRePro(alpha=20)],
+         cl.ReSPro(alpha=20)],
         # Layer 3
         [cl.Conv1d(in_channels=1, out_channels=1, kernel_size=4, stride=1, padding=1, dilation=1),
          cl.AvgPool1d(kernel_size=3, stride=2, padding=0),
-         cl.SRePro(alpha=30)]]
+         cl.ReSPro(alpha=30)]]
     layers[0][0].weight.data.copy_(torch.as_tensor([7, -8, -8, 10, 9], dtype=torch.float32).view(1, 1, 5))
     layers[1][0].weight.data.copy_(torch.as_tensor([2, 8, 3], dtype=torch.float32).view(1, 1, 3))
     layers[2][0].weight.data.copy_(torch.as_tensor([8, -5, 0, -7], dtype=torch.float32).view(1, 1, 4))

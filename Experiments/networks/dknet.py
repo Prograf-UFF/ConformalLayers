@@ -14,7 +14,7 @@ class DkNetCL(nn.Module):
         filters = 32
         for i in range(depth):
             f.append(cl.Conv2d(input_channels, filters, 3, padding=1))
-            f.append(cl.SRePro())
+            f.append(cl.ReSPro())
             input_channels = filters
 
         self.features = cl.ConformalLayers(*f)
@@ -60,7 +60,7 @@ class D3ModNetCL(nn.Module):
         filters = 32
         for i in range(3):
             f.append(cl.Conv2d(input_channels, filters, 3))
-            f.append(cl.SRePro())
+            f.append(cl.ReSPro())
             f.append(cl.AvgPool2d(2, 2))
             input_channels = filters
 

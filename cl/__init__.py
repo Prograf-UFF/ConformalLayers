@@ -1,4 +1,4 @@
-from .activation import SRePro
+from .activation import ReSPro
 from .convolution import Conv1d, Conv2d, Conv3d
 from .layers import ConformalLayers
 from .pooling import AvgPool1d, AvgPool2d, AvgPool3d

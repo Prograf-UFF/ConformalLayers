@@ -12,10 +12,10 @@ class LeNet(nn.Module):
         super(LeNet, self).__init__()
         self.features = cl.ConformalLayers(
             cl.Conv2d(3, 6, 5),
-            cl.SRePro(),
+            cl.ReSPro(),
             cl.AvgPool2d(kernel_size=2, stride=2),
             cl.Conv2d(6, 16, 5),
-            cl.SRePro(),
+            cl.ReSPro(),
             cl.AvgPool2d(kernel_size=2, stride=2),
         )
 

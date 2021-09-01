@@ -11,7 +11,7 @@ class BaseReSProNet(nn.Module):
         super(BaseReSProNet, self).__init__()
         self.features = cl.ConformalLayers(
             cl.Conv2d(3, 32, kernel_size=5),
-            cl.SRePro(),
+            cl.ReSPro(),
             cl.AvgPool2d(kernel_size=3, stride=3),
         )
         self.fc = nn.Linear(2592, 10)
