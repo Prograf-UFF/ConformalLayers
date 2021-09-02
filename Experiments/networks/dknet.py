@@ -55,16 +55,17 @@ class DkNet(nn.Module):
 class D3ModNetCL(nn.Module):
     def __init__(self):
         super(D3ModNetCL, self).__init__()
-        f = []
-        input_channels = 3
-        filters = 32
-        for i in range(3):
-            f.append(cl.Conv2d(input_channels, filters, 3))
-            f.append(cl.ReSPro())
-            f.append(cl.AvgPool2d(2, 2))
-            input_channels = filters
-
-        self.features = cl.ConformalLayers(*f)
+        self.features = cl.ConformalLayers(
+            cl.Conv2d(in_channels=3, out_channels=32, kernel_size=3),
+            cl.ReSPro(),
+            cl.AvgPool2d(kernel_size=2, stride=2),
+            cl.Conv2d(in_channels=32, out_channels=32, kernel_size=3),
+            cl.ReSPro(),
+            cl.AvgPool2d(kernel_size=2, stride=2),
+            cl.Conv2d(in_channels=32, out_channels=32, kernel_size=3),
+            cl.ReSPro(),
+            cl.AvgPool2d(kernel_size=2, stride=2),
+        )
         self.fc1 = nn.Linear(128, 10)
 
     def forward(self, x):
@@ -77,17 +78,17 @@ class D3ModNetCL(nn.Module):
 class D3ModNet(nn.Module):
     def __init__(self):
         super(D3ModNet, self).__init__()
-        f = []
-        fp = []
-        input_channels = 3
-        filters = 32
-        for i in range(3):
-            f.append(nn.Conv2d(input_channels, filters, 3))
-            f.append(nn.ReLU())
-            f.append(nn.AvgPool2d(2, 2))
-            input_channels = filters
-
-        self.features = nn.Sequential(*f)
+        self.features = nn.Sequential(
+            nn.Conv2d(in_channels=3, out_channels=32, kernel_size=3),
+            nn.ReSPro(),
+            nn.AvgPool2d(kernel_size=2, stride=2),
+            nn.Conv2d(in_channels=32, out_channels=32, kernel_size=3),
+            nn.ReSPro(),
+            nn.AvgPool2d(kernel_size=2, stride=2),
+            nn.Conv2d(in_channels=32, out_channels=32, kernel_size=3),
+            nn.ReSPro(),
+            nn.AvgPool2d(kernel_size=2, stride=2),
+        )
         self.fc1 = nn.Linear(128, 10)
 
     def forward(self, x):

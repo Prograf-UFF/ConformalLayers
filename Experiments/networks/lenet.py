@@ -7,9 +7,9 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 import cl
 
 
-class LeNet(nn.Module):
+class LeNetCL(nn.Module):
     def __init__(self):
-        super(LeNet, self).__init__()
+        super(LeNetCL, self).__init__()
         self.features = cl.ConformalLayers(
             cl.Conv2d(3, 6, 5),
             cl.ReSPro(),
@@ -32,9 +32,9 @@ class LeNet(nn.Module):
         return x
 
 
-class LeNetCL(nn.Module):
+class LeNet(nn.Module):
     def __init__(self):
-        super(LeNetCL, self).__init__()
+        super(LeNet, self).__init__()
         self.conv1 = nn.Conv2d(3, 6, kernel_size=5)
         self.conv2 = nn.Conv2d(6, 16, kernel_size=5)
         self.fc1 = nn.Linear(16*5*5, 120)
