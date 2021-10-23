@@ -7,16 +7,11 @@ This repository is a implementation of ConformalLayers written in Python using [
 Please cite our [SIBGRAPI'21](#) paper if you use this code in your research. The paper presents a complete description of the library:
 
 ```{.bib}
-@inproceedings{sousa_fernandes_nader-sibgrapi-21,
-  author  = {Eduardo Vera Sousa and Leandro A. F. Fernandes and Cristina Nader Vasconcelos },
-  title   = {{ConformalLayers}: A non-linear sequential neural network with associative layers},
-  booktitle = {Proceedings of the 34th Conference on Graphics, Patterns and Images},
-  year    = {2021},
-  volume  = {TODO},
-  number  = {TODO},
-  pages   = {TODO},
-  doi     = {TODO},
-  url     = {TODO},
+@InProceedings{sousa_et_al-sibgrapi-2021,
+  author    = {Sousa, Eduardo V. and Fernandes, Leandro A. F. and Vasconcelos, Cristina N.},
+  title     = {{C}onformal{L}ayers: a non-linear sequential neural network with associative layers},
+  booktitle = {Proceedings of the 2021 34th SIBGRAPI Conference on Graphics, Patterns and Images},
+  year      = {2021},
 }
 ```
 
