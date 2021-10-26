@@ -4,7 +4,7 @@ ConformalLayers is a conformal embedding of sequential layers of Convolutional N
 
 This repository is a implementation of ConformalLayers written in Python using [Minkowski Engine](https://github.com/NVIDIA/MinkowskiEngine) and [PyTorch](https://pytorch.org/) as backend. This implementation is a first step into the usage of activation functions, like ReSPro, that can be represented as tensors, depending on the geometry model.
 
-Please cite our [SIBGRAPI'21](#) paper if you use this code in your research. The paper presents a complete description of the library:
+Please cite our [SIBGRAPI'21](http://arxiv.org/abs/2110.12108) paper if you use this code in your research. The paper presents a complete description of the library:
 
 ```{.bib}
 @InProceedings{sousa_et_al-sibgrapi-2021,
