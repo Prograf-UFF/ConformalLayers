@@ -8,6 +8,7 @@ import torch
 
 
 class Flatten(ConformalModule):
+    
     def __init__(self,
                  *, name: Optional[str] = None) -> None:
         super(Flatten, self).__init__(name=name)

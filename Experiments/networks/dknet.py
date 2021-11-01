@@ -1,4 +1,3 @@
-import torch
 import torch.nn as nn
 import os
 import sys
@@ -7,6 +6,7 @@ import cl
 
 
 class DkNetCL(nn.Module):
+
     def __init__(self, depth):
         super(DkNetCL, self).__init__()
         f = []
@@ -30,6 +30,7 @@ class DkNetCL(nn.Module):
 
 
 class DkNet(nn.Module):
+
     def __init__(self, depth):
         super(DkNet, self).__init__()
         f = []
@@ -53,6 +54,7 @@ class DkNet(nn.Module):
 
 
 class D3ModNetCL(nn.Module):
+
     def __init__(self):
         super(D3ModNetCL, self).__init__()
         self.features = cl.ConformalLayers(
@@ -76,6 +78,7 @@ class D3ModNetCL(nn.Module):
 
 
 class D3ModNet(nn.Module):
+    
     def __init__(self):
         super(D3ModNet, self).__init__()
         self.features = nn.Sequential(

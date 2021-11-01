@@ -5,6 +5,7 @@ import os
 
 
 class MNIST:
+
     def __init__(self, normalize=False, shuffle=False, add_channel=True, pad=True) -> None:
         super().__init__()
         self.normalize = normalize
@@ -36,6 +37,7 @@ class MNIST:
 
 
 class FashionMNIST:
+
     def __init__(self, normalize=False, shuffle=False, oversample=None) -> None:
         super().__init__()
         self.normalize = normalize
@@ -64,6 +66,7 @@ class FashionMNIST:
 
 
 class CIFAR10:
+    
     def __init__(self, normalize=False, shuffle=False) -> None:
         super().__init__()
         self.normalize = normalize

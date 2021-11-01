@@ -14,6 +14,7 @@ CachedSignature = namedtuple('CachedSignature', ['in_signature', 'out_signature'
 
 
 class ConformalLayers(torch.nn.Module):
+    
     def __init__(self, *args: ConformalModule) -> None:
         super(ConformalLayers, self).__init__()
         # Keep conformal modules as is and track parameter's updates
@@ -123,12 +124,9 @@ class ConformalLayers(torch.nn.Module):
                 in_dims = out_dims
             # Use the stored layer values to compute the extra component of cached matrix
             # and the extra slice of the cached tensor
-            for sequential_matrix_prod, activation_matrix_scalar, activation_tensor_scalar in \
-                    reversed(stored_layer_values):
+            for sequential_matrix_prod, activation_matrix_scalar, activation_tensor_scalar in reversed(stored_layer_values):
                 if activation_tensor_scalar is not None:
-                    cached_tensor_extra = cached_tensor_extra + torch.sparse.mm(sequential_matrix_prod.t(),
-                                                                                sequential_matrix_prod) * \
-                                          (cached_matrix_extra * activation_tensor_scalar)
+                    cached_tensor_extra = cached_tensor_extra + torch.sparse.mm(sequential_matrix_prod.t(), sequential_matrix_prod) * (cached_matrix_extra * activation_tensor_scalar)
                 if activation_matrix_scalar is not None:
                     cached_matrix_extra = cached_matrix_extra * activation_matrix_scalar
             # Set the final matrix and the final tensor encoding the Conformal Layers

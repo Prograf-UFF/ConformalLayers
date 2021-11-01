@@ -7,14 +7,14 @@ import torch
 
 
 class WrappedMinkowskiReSPro(torch.nn.Module):
+
     def __init__(self,
                  owner: ConformalModule) -> None:
         super(WrappedMinkowskiReSPro, self).__init__()
         self._owner = (owner,)  # We use a tuple to avoid infinite recursion while PyTorch traverses the module's tree
 
     def forward(self, input: ForwardMinkowskiData) -> ForwardMinkowskiData:
-        raise RuntimeError('Illegal call to the forward function. ConformalLayers was developed to evaluate the ReSPro \
-        activation function differently in this module.')
+        raise RuntimeError('Illegal call to the forward function. ConformalLayers was developed to evaluate the ReSPro activation function differently in this module.')
 
     def to_tensor(self, alpha_upper: ScalarTensor) -> Tuple[ScalarTensor, ScalarTensor]:
         # Get the alpha parameter
@@ -33,6 +33,7 @@ class WrappedMinkowskiReSPro(torch.nn.Module):
 
 
 class WrappedTorchReSPro(torch.nn.Module):
+
     def __init__(self,
                  owner: ConformalModule) -> None:
         super(WrappedTorchReSPro, self).__init__()
@@ -53,8 +54,7 @@ class WrappedTorchReSPro(torch.nn.Module):
         return (input, output_extra), alpha_upper
 
     def to_tensor(self, alpha_upper: ScalarTensor) -> Tuple[ScalarTensor, ScalarTensor]:
-        raise RuntimeError('Illegal call to the forward function. ConformalLayers was developed to evaluate the ReSPro \
-        activation function differently in this module.')
+        raise RuntimeError('Illegal call to the forward function. ConformalLayers was developed to evaluate the ReSPro activation function differently in this module.')
 
     @property
     def owner(self) -> ConformalModule:
@@ -62,6 +62,7 @@ class WrappedTorchReSPro(torch.nn.Module):
 
 
 class BaseActivation(ConformalModule):
+
     def __init__(self,
                  *, name: Optional[str] = None) -> None:
         super(BaseActivation, self).__init__(name=name)
@@ -72,6 +73,7 @@ class BaseActivation(ConformalModule):
 
 
 class NoActivation(BaseActivation):
+
     def __init__(self) -> None:
         super(NoActivation, self).__init__()
         self._identity_module = torch.nn.Identity()
@@ -90,6 +92,7 @@ class NoActivation(BaseActivation):
 
 
 class ReSPro(BaseActivation):
+    
     def __init__(self,
                  alpha: Optional[float] = None,
                  *, name: Optional[str] = None) -> None:

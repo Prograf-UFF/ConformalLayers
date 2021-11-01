@@ -7,6 +7,7 @@ import torch
 
 
 class WrappedMinkowskiAvgPooling(WrappedMinkowskiStridedOperation):
+
     def __init__(self,
                  owner: ConformalModule) -> None:
         super(WrappedMinkowskiAvgPooling, self).__init__(
@@ -28,6 +29,7 @@ class WrappedMinkowskiAvgPooling(WrappedMinkowskiStridedOperation):
 
 
 class AvgPoolNd(ConformalModule):
+
     _TORCH_MODULE_CLASS = None
 
     def __init__(self,
@@ -84,6 +86,7 @@ class AvgPoolNd(ConformalModule):
 
 
 class AvgPool1d(AvgPoolNd):
+
     _TORCH_MODULE_CLASS = torch.nn.AvgPool1d
 
     def __init__(self,
@@ -99,6 +102,7 @@ class AvgPool1d(AvgPoolNd):
 
 
 class AvgPool2d(AvgPoolNd):
+
     _TORCH_MODULE_CLASS = torch.nn.AvgPool2d
 
     def __init__(self,
@@ -114,6 +118,7 @@ class AvgPool2d(AvgPoolNd):
 
 
 class AvgPool3d(AvgPoolNd):
+    
     _TORCH_MODULE_CLASS = torch.nn.AvgPool3d
 
     def __init__(self,

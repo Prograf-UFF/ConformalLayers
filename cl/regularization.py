@@ -6,6 +6,7 @@ import MinkowskiEngine as me
 
 
 class Dropout(ConformalModule):
+    
     def __init__(self,
                  p: float = 0.5,
                  inplace: bool = False,

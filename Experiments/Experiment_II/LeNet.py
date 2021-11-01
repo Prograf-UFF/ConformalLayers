@@ -4,10 +4,11 @@ import os
 import sys
 import numpy as np
 import argparse
+import warnings
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
-from Experiments.utils.utils import progress_bar
+from Experiments.utils import progress_bar
 from Experiments.networks.lenet import LeNet
 
 
@@ -55,11 +56,9 @@ def test(net, testloader, criterion, device):
 
 def main():
     # Device parameters
-    device = torch.device('cuda:{}'.format(os.environ['GPU'])) if torch.cuda.is_available() else torch.device('cpu')
-    if device.type == 'cuda':
-        torch.cuda.set_device(device)
-    else:
-        print('Warning: The device was set to CPU.')
+    device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+    if device.type == 'cpu':
+        warnings.warn(f'The device was set to {device}.', RuntimeWarning)
 
     # Set the seeds for reproducibility
     torch.manual_seed(1992)

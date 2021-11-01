@@ -11,12 +11,13 @@ import torch
 import warnings
 
 
-DEVICE = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
-torch.cuda.set_device(DEVICE) if DEVICE.type == 'cuda' else warnings.warn(f'The device was set to {DEVICE}.',
-                                                                          RuntimeWarning)
+DEVICE = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+if DEVICE.type == 'cpu':
+    warnings.warn(f'The device was set to {DEVICE}.', RuntimeWarning)
 
 
 class NativeNet(object):
+
     def __init__(self, *native_modules: torch.nn.Module):
         self.modules = torch.nn.Sequential(*native_modules)
 
@@ -25,6 +26,7 @@ class NativeNet(object):
 
 
 class CLNet(object):
+    
     def __init__(self, *native_modules: torch.nn.Module):
         modules = list()
         for module in native_modules:

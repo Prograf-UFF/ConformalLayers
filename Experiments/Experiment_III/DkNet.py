@@ -4,6 +4,7 @@ import sys
 import numpy as np
 import argparse
 import time
+import warnings
 from resource import *
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
@@ -43,12 +44,9 @@ def test(net, iteration, data, depth, batch_size, device):
 
 def main():
     # Device parameters
-    device = torch.device('cuda:{}'.format(os.environ['GPU'])) if torch.cuda.is_available() else torch.device('cpu')
-    if device.type == 'cuda':
-        torch.cuda.set_device(device)
-        torch.set_default_tensor_type(torch.cuda.FloatTensor)
-    else:
-        print('Warning: The device was set to CPU.')
+    device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+    if device.type == 'cpu':
+        warnings.warn(f'The device was set to {device}.', RuntimeWarning)
 
     # Set the seeds for reproducibility
     torch.manual_seed(1992)

@@ -7,6 +7,7 @@ import cl
 
 
 class BaseReSProNet(nn.Module):
+
     def __init__(self) -> None:
         super(BaseReSProNet, self).__init__()
         self.features = cl.ConformalLayers(
@@ -24,6 +25,7 @@ class BaseReSProNet(nn.Module):
 
 
 class BaseLinearNet(nn.Module):
+
     def __init__(self) -> None:
         super(BaseLinearNet, self).__init__()
         self.features = nn.Sequential(
@@ -41,6 +43,7 @@ class BaseLinearNet(nn.Module):
 
 
 class BaseReLUNet(nn.Module):
+    
     def __init__(self) -> None:
         super(BaseReLUNet, self).__init__()
         self.features = nn.Sequential(

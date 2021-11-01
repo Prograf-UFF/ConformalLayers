@@ -7,6 +7,7 @@ import torch
 
 
 class WrappedMinkowskiConvolution(WrappedMinkowskiStridedOperation):
+
     def __init__(self,
                  owner: ConformalModule) -> None:
         super(WrappedMinkowskiConvolution, self).__init__(
@@ -16,8 +17,7 @@ class WrappedMinkowskiConvolution(WrappedMinkowskiStridedOperation):
         self._kernel = torch.empty((self.kernel_volume, owner.in_channels, owner.out_channels),
                                    dtype=owner.weight.dtype, device=owner.weight.device)
         
-    def _apply_function(self, input: me.SparseTensor, alpha_upper: ScalarTensor, out_coords_key: me.CoordsKey) -> \
-            Tuple[DenseTensor, ScalarTensor]:
+    def _apply_function(self, input: me.SparseTensor, alpha_upper: ScalarTensor, out_coords_key: me.CoordsKey) -> Tuple[DenseTensor, ScalarTensor]:
         self._kernel = self._kernel.to(self.owner.weight.device)
         # We don't know why Minkowski Engine convolution does not work with the view
         self._kernel.copy_(self.owner.weight.T.reshape(*self._kernel.shape))
@@ -32,6 +32,7 @@ class WrappedMinkowskiConvolution(WrappedMinkowskiStridedOperation):
 
 
 class WrappedMinkowskiConvolutionTranspose(WrappedMinkowskiStridedOperation):
+
     def __init__(self,
                  owner: ConformalModule) -> None:
         super(WrappedMinkowskiConvolutionTranspose, self).__init__(
@@ -42,8 +43,7 @@ class WrappedMinkowskiConvolutionTranspose(WrappedMinkowskiStridedOperation):
             self.kernel_volume, owner.in_channels, owner.out_channels)
         raise NotImplementedError()
 
-    def _apply_function(self, input: me.SparseTensor, alpha_upper: ScalarTensor, out_coords_key: me.CoordsKey) -> \
-            Tuple[DenseTensor, ScalarTensor]:
+    def _apply_function(self, input: me.SparseTensor, alpha_upper: ScalarTensor, out_coords_key: me.CoordsKey) -> Tuple[DenseTensor, ScalarTensor]:
         out_feats = self._function.apply(input.feats, self._kernel, input.tensor_stride, 1, self.kernel_size,
                                          self.dilation, self.kernel_region_type, self.kernel_region_offset, False,
                                          input.coords_key, out_coords_key, input.coords_man)
@@ -55,6 +55,7 @@ class WrappedMinkowskiConvolutionTranspose(WrappedMinkowskiStridedOperation):
 
 
 class ConvNd(ConformalModule):
+
     _TORCH_MODULE_CLASS = None
 
     def __init__(self,
@@ -88,8 +89,7 @@ class ConvNd(ConformalModule):
         entries['dilation'] = tuple(map(int, self.dilation))
         return entries
 
-    def forward(self, input: Union[ForwardMinkowskiData, ForwardTorchData]) -> \
-            Union[ForwardMinkowskiData, ForwardTorchData]:
+    def forward(self, input: Union[ForwardMinkowskiData, ForwardTorchData]) -> Union[ForwardMinkowskiData, ForwardTorchData]:
         if self.training:
             (input, input_extra), alpha_upper = input
             output = self._torch_module(input)
@@ -136,6 +136,7 @@ class ConvNd(ConformalModule):
 
 
 class Conv1d(ConvNd):
+
     _TORCH_MODULE_CLASS = torch.nn.Conv1d
 
     def __init__(self,
@@ -157,6 +158,7 @@ class Conv1d(ConvNd):
 
 
 class Conv2d(ConvNd):
+
     _TORCH_MODULE_CLASS = torch.nn.Conv2d
 
     def __init__(self,
@@ -178,6 +180,7 @@ class Conv2d(ConvNd):
 
 
 class Conv3d(ConvNd):
+    
     _TORCH_MODULE_CLASS = torch.nn.Conv3d
 
     def __init__(self,

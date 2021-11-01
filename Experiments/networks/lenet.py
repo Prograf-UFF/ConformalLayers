@@ -1,4 +1,3 @@
-import torch
 import torch.nn as nn
 import torch.nn.functional as func
 import os
@@ -8,6 +7,7 @@ import cl
 
 
 class LeNetCL(nn.Module):
+
     def __init__(self):
         super(LeNetCL, self).__init__()
         self.features = cl.ConformalLayers(
@@ -33,6 +33,7 @@ class LeNetCL(nn.Module):
 
 
 class LeNet(nn.Module):
+    
     def __init__(self):
         super(LeNet, self).__init__()
         self.conv1 = nn.Conv2d(3, 6, kernel_size=5)
