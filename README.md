@@ -15,7 +15,7 @@ Please cite our [SIBGRAPI'21](http://arxiv.org/abs/2110.12108) paper if you use 
 }
 ```
 
-Please, let Eduardo Vera Sousa ([http://www.ic.uff.br/~eduardovera](http://www.ic.uff.br/~eduardovera)), Leandro A. F. Fernandes ([http://www.ic.uff.br/~laffernandes](http://www.ic.uff.br/~laffernandes)) and Cristina Nader Vasconcelos(http://www2.ic.uff.br/~crisnv/index.php) know if you want to contribute to this project. Also, do not hesitate to contact them if you encounter any problems.
+Please, let [Eduardo Vera Sousa](http://www.ic.uff.br/~eduardovera), [Leandro A. F. Fernandes](http://www.ic.uff.br/~laffernandes) and [Cristina Nader Vasconcelos](http://www.ic.uff.br/~crisnv/index.php) know if you want to contribute to this project. Also, do not hesitate to contact them if you encounter any problems.
 
 **Contents:**
 
@@ -44,12 +44,6 @@ Required tools:
 
 - [Minkowski Engine](https://github.com/NVIDIA/MinkowskiEngine/tree/v0.4.3) (version 0.4.3)
 
-Optional tool to use ConformalLayers:
-
-- [Virtual enviroment](https://wiki.archlinux.org/index.php/Python/Virtual_environment) to create an isolated workspace for a Python application.
-
-- [Docker](https://www.docker.com/) to create a container to run ConformalLayers
-
 ## 2. How to Install ConformalLayers
 
 No magic needed here. Just run:
@@ -58,9 +52,19 @@ No magic needed here. Just run:
 python setup.py install
 ```
 
-But the `MinkowskiEngine` may need some special libraries. See its [Quick Start Tutorial](https://nvidia.github.io/MinkowskiEngine/quick_start.html) for details.
+But the Minkowski Engine may need some special libraries like MKL or OpenBLAS. See its [Quick Start Tutorial](https://nvidia.github.io/MinkowskiEngine/quick_start.html) for details.
 
-**WARNING**: Make sure that `MinkowskiEngine` is not using the `CPU_ONLY` build set! That happens when you have installed the CPU version of PyTorch.
+Also, recall that our current implementation of the ConformalLayers requires the Minkowski Engine version 0.4.3. You can have it by running:
+
+```bash
+git clone https://github.com/StanfordVL/MinkowskiEngine.git
+cd MinkowskiEngine
+git checkout tags/v0.4.3
+python setup.py install
+```
+Finally, make sure that Minkowski Engine is not using the `CPU_ONLY` build set! That happens when you have installed the CPU version of PyTorch.
+
+Please let us know if you have any difficulties installing the dependencies.
 
 ## 3. Running Examples
 
