@@ -8,8 +8,7 @@ import torch
 
 class WrappedMinkowskiReSPro(torch.nn.Module):
 
-    def __init__(self,
-                 owner: ConformalModule) -> None:
+    def __init__(self, owner: ConformalModule) -> None:
         super(WrappedMinkowskiReSPro, self).__init__()
         self._owner = (owner,)  # We use a tuple to avoid infinite recursion while PyTorch traverses the module's tree
 
@@ -18,8 +17,7 @@ class WrappedMinkowskiReSPro(torch.nn.Module):
 
     def to_tensor(self, alpha_upper: ScalarTensor) -> Tuple[ScalarTensor, ScalarTensor]:
         # Get the alpha parameter
-        alpha = alpha_upper if self.owner.alpha is None else torch.as_tensor(self.owner.alpha, dtype=alpha_upper.dtype,
-                                                                             device=alpha_upper.device)
+        alpha = alpha_upper if self.owner.alpha is None else torch.as_tensor(self.owner.alpha, dtype=alpha_upper.dtype, device=alpha_upper.device)
         # Compute the last coefficient of the matrix
         matrix_scalar = alpha / 2
         # Compute the coefficient on the main diagonal of the last slice of the tensor
@@ -34,8 +32,7 @@ class WrappedMinkowskiReSPro(torch.nn.Module):
 
 class WrappedTorchReSPro(torch.nn.Module):
 
-    def __init__(self,
-                 owner: ConformalModule) -> None:
+    def __init__(self, owner: ConformalModule) -> None:
         super(WrappedTorchReSPro, self).__init__()
         self._owner = (owner,)  # We use a tuple to avoid infinite recursion while PyTorch traverses the module's tree
 
@@ -43,8 +40,7 @@ class WrappedTorchReSPro(torch.nn.Module):
         (input, input_extra), alpha_upper = input
         batches, *in_dims = input.shape
         # Get the alpha parameter
-        alpha = alpha_upper if self.owner.alpha is None else torch.as_tensor(self.owner.alpha, dtype=input.dtype,
-                                                                             device=input.device)
+        alpha = alpha_upper if self.owner.alpha is None else torch.as_tensor(self.owner.alpha, dtype=input.dtype, device=input.device)
         # Apply the activation function
         flatted_input = input.view(batches, -1)
         input_sqr_norm = (flatted_input * flatted_input).sum(dim=1).unsqueeze(1)
@@ -63,8 +59,7 @@ class WrappedTorchReSPro(torch.nn.Module):
 
 class BaseActivation(ConformalModule):
 
-    def __init__(self,
-                 *, name: Optional[str] = None) -> None:
+    def __init__(self, *, name: Optional[str] = None) -> None:
         super(BaseActivation, self).__init__(name=name)
 
     @abstractmethod
@@ -78,8 +73,7 @@ class NoActivation(BaseActivation):
         super(NoActivation, self).__init__()
         self._identity_module = torch.nn.Identity()
 
-    def forward(self, input: Union[ForwardMinkowskiData, ForwardTorchData]) -> Union[ForwardMinkowskiData,
-                                                                                     ForwardTorchData]:
+    def forward(self, input: Union[ForwardMinkowskiData, ForwardTorchData]) -> Union[ForwardMinkowskiData, ForwardTorchData]:
         return input
 
     def output_dims(self, *in_dims: int) -> SizeAny:
@@ -93,9 +87,7 @@ class NoActivation(BaseActivation):
 
 class ReSPro(BaseActivation):
     
-    def __init__(self,
-                 alpha: Optional[float] = None,
-                 *, name: Optional[str] = None) -> None:
+    def __init__(self, alpha: Optional[float] = None, *, name: Optional[str] = None) -> None:
         super(ReSPro, self).__init__(name=name)
         self._alpha = alpha
         self._torch_module = WrappedTorchReSPro(self)
@@ -106,8 +98,7 @@ class ReSPro(BaseActivation):
         entries['alpha'] = 'Automatic' if self._alpha is None else self._alpha
         return entries
 
-    def forward(self, input: Union[ForwardMinkowskiData, ForwardTorchData]) -> Union[ForwardMinkowskiData,
-                                                                                     ForwardTorchData]:
+    def forward(self, input: Union[ForwardMinkowskiData, ForwardTorchData]) -> Union[ForwardMinkowskiData, ForwardTorchData]:
         native_module = self._torch_module if self.training else self._minkowski_module
         return native_module(input)
 

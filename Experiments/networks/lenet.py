@@ -1,9 +1,6 @@
+import cl
 import torch.nn as nn
 import torch.nn.functional as func
-import os
-import sys
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
-import cl
 
 
 class LeNetCL(nn.Module):

@@ -1,13 +1,9 @@
-import torch
-import os
-import sys
+import argparse, os, resource, sys, time, warnings
 import numpy as np
-import argparse
-import time
-import warnings
-from resource import *
+import torch
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
+
 from Experiments.networks.dknet import D3ModNet
 
 
@@ -35,7 +31,7 @@ def test(net, iteration, data, depth, batch_size, device):
         end = time.time()
         t = end-start
         c = 0
-        m = getrusage(RUSAGE_SELF).ru_maxrss / 1024
+        m = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024
     line = '{},{},{},{},{},{}'.format(iteration, depth, batch_size, t, c, m)
     f.write(line + '\n')
     print(line)
@@ -44,7 +40,7 @@ def test(net, iteration, data, depth, batch_size, device):
 
 def main():
     # Device parameters
-    device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     if device.type == 'cpu':
         warnings.warn(f'The device was set to {device}.', RuntimeWarning)
 

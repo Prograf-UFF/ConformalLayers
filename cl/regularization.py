@@ -7,10 +7,7 @@ import MinkowskiEngine as me
 
 class Dropout(ConformalModule):
     
-    def __init__(self,
-                 p: float = 0.5,
-                 inplace: bool = False,
-                 *, name: Optional[str] = None) -> None:
+    def __init__(self, p: float = 0.5, inplace: bool = False, *, name: Optional[str] = None) -> None:
         super(Dropout, self).__init__(name=name)
         self._minkowski_module = me.MinkowskiDropout(p=p, inplace=inplace)
 
@@ -20,8 +17,7 @@ class Dropout(ConformalModule):
         entries['inplace'] = self.inplace
         return entries
 
-    def forward(self, input: Union[ForwardMinkowskiData, ForwardTorchData])\
-            -> Union[ForwardMinkowskiData, ForwardTorchData]:
+    def forward(self, input: Union[ForwardMinkowskiData, ForwardTorchData]) -> Union[ForwardMinkowskiData, ForwardTorchData]:
         if self.training:
             (input, input_extra), alpha_upper = input
             return (self._minkowski_module.module(input), input_extra), alpha_upper

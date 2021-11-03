@@ -1,8 +1,5 @@
-import torch.nn as nn
-import os
-import sys
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 import cl
+import torch.nn as nn
 
 
 class DkNetCL(nn.Module):

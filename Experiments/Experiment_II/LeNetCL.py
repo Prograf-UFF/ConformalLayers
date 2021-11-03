@@ -1,11 +1,7 @@
+import argparse, os, sys, warnings
+import numpy as np
 import torch
 import torch.nn as nn
-import torch.optim as optim
-import os
-import sys
-import numpy as np
-import argparse
-import warnings
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
@@ -57,7 +53,7 @@ def test(net, testloader, criterion, device):
 
 def main():
     # Device parameters
-    device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     if device.type == 'cpu':
         warnings.warn(f'The device was set to {device}.', RuntimeWarning)
 
