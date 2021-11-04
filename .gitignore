@@ -9,5 +9,5 @@ Datasets/
 Experiments/LeNet_MNIST
 
 /build
-/cl.egg-info
 /dist
+/ConformalLayers.egg-info
