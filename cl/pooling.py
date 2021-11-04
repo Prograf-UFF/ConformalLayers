@@ -30,7 +30,7 @@ class AvgPoolNd(ConformalModule):
     def __init__(self, kernel_size: SizeAny, stride: Optional[SizeAny], padding: SizeAny, *, name: Optional[str] = None) -> None:
         super(AvgPoolNd, self).__init__(name=name)
         self._torch_module = self._TORCH_MODULE_CLASS(kernel_size=kernel_size, stride=stride, padding=padding, ceil_mode=False, count_include_pad=True)
-        self._minkowski_module = WrappedMinkowskiAvgPooling(self, me.KernelGenerator(kernel_size=kernel_size, stride=stride, dilation=1, expand_coordinates=False, dimension=len(kernel_size)))
+        self._minkowski_module = WrappedMinkowskiAvgPooling(self, me.KernelGenerator(kernel_size=kernel_size, stride=1, dilation=1, is_transpose=False, expand_coordinates=False, dimension=len(kernel_size)))
 
     def _repr_dict(self) -> OrderedDict:
         entries = super()._repr_dict()

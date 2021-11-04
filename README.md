@@ -142,7 +142,7 @@ python test_<module_name>.py
 
 ## Documentation
 
-Here you find a brief description of the namespaces, macros, classes, functions, procedures, and operators available for the user. All methods are available with C++ and most of them with Python. The detailed documentation is not ready yet.
+Here you find a brief description of the classes available for the user. The detailed documentation is not ready yet.
 
 Contents:
 
@@ -158,6 +158,7 @@ Here we present the main modules implemented in our framework. They can be found
 
 | Module | Description |
 | --- | --- |
+| `cl.ConformalLayers` | This class is equivalent to the `nn.Sequential` module from PyTorch |
 | `cl.Conv1d`, `cl.Conv2d`, `cl.Conv3d` | Convolution operation implemented for *n*-D signals |
 | `cl.AvgPool1d`, `cl.AvgPool2d`, `cl.AvgPool3d` | Average pooling operation implemented for *n*-D signals |
 | `cl.BaseActivation` | The abstract class for the activation function layer. To extend the library, one shall implement this class |
@@ -166,7 +167,7 @@ Here we present the main modules implemented in our framework. They can be found
 | `cl.ReSPro` | The layer that corresponds to the `ReSPro` activation function. Such function is a linear function with non-linear behavior that can be encoded as a tensor. The non-linearity of this function is controlled by a parameter <span>&alpha;</span> (passed as argument) that can be provided or inferred from the data |
 <br>
 
-These modules are composed into `cl.ConformalLayers` in a very similar way to the `nn.Sequential` module. The class `cl.ConformalLayers` plays an important role in this task, as you can see by comparing the code snippets below:
+To define a sequential network, you need to queue the layers in an instance of `cl.ConformalLayers`. This class in a very similar to the `nn.Sequential` module from PyTorch and plays an important role in this task, as you can see by comparing the code snippets below:
 
 ```python
 # This one is built with pure PyTorch

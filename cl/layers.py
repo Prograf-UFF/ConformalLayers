@@ -15,9 +15,8 @@ CachedSignature = namedtuple('CachedSignature', ['in_signature', 'out_signature'
 
 class ConformalLayers(torch.nn.Module):
     
-    def __init__(self, *args: ConformalModule, dense_cache: bool = True, pruning_threshold: Optional[float] = 1e-5) -> None:
+    def __init__(self, *args: ConformalModule, pruning_threshold: Optional[float] = 1e-5) -> None:
         super(ConformalLayers, self).__init__()
-        self.dense_cache = dense_cache
         self.pruning_threshold = float(pruning_threshold) if pruning_threshold is not None else None
         # Keep conformal modules as is and track parameter's updates
         self._modulez = torch.nn.Sequential(*args)
@@ -133,12 +132,8 @@ class ConformalLayers(torch.nn.Module):
                     cached_matrix_extra = cached_matrix_extra * activation_matrix_scalar
             cached_matrix = cached_matrix.coalesce()
             cached_tensor_extra = cached_tensor_extra.coalesce()
-            # Use dense tensors
-            if self.dense_cache:
-                cached_matrix = cached_matrix.to_dense()
-                cached_tensor_extra = cached_tensor_extra.to_dense()
-            # or remove negligible coefficients from sparse tensors
-            elif self.pruning_threshold is not None:
+            # Remove negligible coefficients from sparse tensors
+            if self.pruning_threshold is not None:
                 cached_matrix = self._prune_negligible_coefficients(cached_matrix)
                 cached_tensor_extra = self._prune_negligible_coefficients(cached_tensor_extra)
             # Set the final matrix and the final tensor encoding the Conformal Layers

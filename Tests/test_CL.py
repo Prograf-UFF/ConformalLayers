@@ -4,7 +4,7 @@ import torch
 
 
 def main():
-    tol = 1e-6
+    tol = 1e-5
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     if device.type == 'cpu':
         warnings.warn(f'The device was set to {device}.', RuntimeWarning)

@@ -30,7 +30,7 @@ class ConvNd(ConformalModule):
     def __init__(self, in_channels: int, out_channels: int, kernel_size: SizeAny, stride: SizeAny, padding: SizeAny, dilation: SizeAny, *, name: Optional[str] = None) -> None:
         super(ConvNd, self).__init__(name=name)
         self._torch_module = self._TORCH_MODULE_CLASS(in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size, stride=stride, padding=padding, dilation=dilation, groups=1, bias=False, padding_mode='zeros')
-        self._minkowski_module = WrappedMinkowskiConvolution(self, me.KernelGenerator(kernel_size=kernel_size, stride=stride, dilation=dilation, expand_coordinates=False, dimension=len(kernel_size)))
+        self._minkowski_module = WrappedMinkowskiConvolution(self, me.KernelGenerator(kernel_size=kernel_size, stride=1, dilation=dilation, is_transpose=False, expand_coordinates=False, dimension=len(kernel_size)))
 
     def _repr_dict(self) -> OrderedDict:
         entries = super()._repr_dict()
