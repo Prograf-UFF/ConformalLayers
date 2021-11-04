@@ -1,10 +1,7 @@
+import argparse, os, sys, warnings
+import numpy as np
 import torch
 import torch.nn as nn
-import os
-import sys
-import numpy as np
-import argparse
-import warnings
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
@@ -30,8 +27,7 @@ def train(net, trainloader, criterion, device, optimizer):
         total += targets.size(0)
         correct += predicted.eq(targets).sum().item()
 
-        progress_bar(batch_idx, len(trainloader), 'Loss: %.3f | Acc: %.3f%% (%d/%d)\n' % (
-            train_loss / (batch_idx + 1), 100. * correct / total, correct, total))
+        progress_bar(batch_idx, len(trainloader), 'Loss: %.3f | Acc: %.3f%% (%d/%d)\n' % (train_loss / (batch_idx + 1), 100. * correct / total, correct, total))
 
 
 @torch.no_grad()
@@ -50,13 +46,12 @@ def test(net, testloader, criterion, device):
         total += targets.size(0)
         correct += predicted.eq(targets).sum().item()
 
-        progress_bar(batch_idx, len(testloader), 'Loss: %.3f | Acc: %.3f%% (%d/%d)\n' % (
-            test_loss / (batch_idx + 1), 100. * correct / total, correct, total))
+        progress_bar(batch_idx, len(testloader), 'Loss: %.3f | Acc: %.3f%% (%d/%d)\n' % (test_loss / (batch_idx + 1), 100. * correct / total, correct, total))
 
 
 def main():
     # Device parameters
-    device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     if device.type == 'cpu':
         warnings.warn(f'The device was set to {device}.', RuntimeWarning)
 

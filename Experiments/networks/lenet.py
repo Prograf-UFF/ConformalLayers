@@ -1,9 +1,6 @@
+import cl
 import torch.nn as nn
 import torch.nn.functional as func
-import os
-import sys
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
-import cl
 
 
 class LeNetCL(nn.Module):
@@ -18,7 +15,6 @@ class LeNetCL(nn.Module):
             cl.ReSPro(),
             cl.AvgPool2d(kernel_size=2, stride=2),
         )
-
         self.fc1 = nn.Linear(16*5*5, 120)
         self.fc2 = nn.Linear(120, 84)
         self.fc3 = nn.Linear(84, 10)

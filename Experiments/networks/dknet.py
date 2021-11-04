@@ -1,8 +1,5 @@
-import torch.nn as nn
-import os
-import sys
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 import cl
+import torch.nn as nn
 
 
 class DkNetCL(nn.Module):
@@ -12,15 +9,12 @@ class DkNetCL(nn.Module):
         f = []
         input_channels = 3
         filters = 32
-        for i in range(depth):
+        for _ in range(depth):
             f.append(cl.Conv2d(input_channels, filters, 3, padding=1))
             f.append(cl.ReSPro())
             input_channels = filters
-
         self.features = cl.ConformalLayers(*f)
-
-        flattened_size = 32768
-        self.fc1 = nn.Linear(flattened_size, 10)
+        self.fc1 = nn.Linear(32768, 10)
 
     def forward(self, x):
         x = self.features(x)
@@ -36,15 +30,12 @@ class DkNet(nn.Module):
         f = []
         input_channels = 3
         filters = 32
-        for i in range(depth):
+        for _ in range(depth):
             f.append(nn.Conv2d(input_channels, filters, 3, padding=1))
             f.append(nn.ReLU())
             input_channels = filters
-
         self.features = nn.Sequential(*f)
-
-        flattened_size = 32768
-        self.fc1 = nn.Linear(flattened_size, 10)
+        self.fc1 = nn.Linear(32768, 10)
 
     def forward(self, x):
         x = self.features(x)

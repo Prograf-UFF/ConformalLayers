@@ -8,7 +8,6 @@ Experiments/data/
 Datasets/
 Experiments/LeNet_MNIST
 
-sandbox/
 /build
 /cl.egg-info
 /dist

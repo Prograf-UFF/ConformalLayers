@@ -15,8 +15,9 @@ CachedSignature = namedtuple('CachedSignature', ['in_signature', 'out_signature'
 
 class ConformalLayers(torch.nn.Module):
     
-    def __init__(self, *args: ConformalModule) -> None:
+    def __init__(self, *args: ConformalModule, pruning_threshold: Optional[float] = 1e-5) -> None:
         super(ConformalLayers, self).__init__()
+        self.pruning_threshold = float(pruning_threshold) if pruning_threshold is not None else None
         # Keep conformal modules as is and track parameter's updates
         self._modulez = torch.nn.Sequential(*args)
         # Break the sequence of operations into Conformal Layers
@@ -58,25 +59,21 @@ class ConformalLayers(torch.nn.Module):
     def _from_minkowski_to_sparse_coo(self, tensor: me.SparseTensor, in_numel: int, out_dims: SizeAny) -> SparseTensor:
         out_channels, *out_volume = out_dims if len(out_dims) > 1 else (1, *out_dims)
         out_numel = numpy.prod(out_dims)
-        coords = tensor.coords.view(-1, 1 + len(out_volume), 1).expand(-1, -1, out_channels).permute(0, 2, 1)
-        coords = torch.cat((coords, torch.empty((len(coords), out_channels, 1),
-                                                dtype=torch.int32, device=coords.device)), 2)
+        coords = tensor.coordinates.view(-1, 1 + len(out_volume), 1).expand(-1, -1, out_channels).permute(0, 2, 1)
+        coords = torch.cat((coords, torch.empty((len(coords), out_channels, 1), dtype=torch.int32, device=coords.device)), 2)
         for channel in range(out_channels):
             coords[:, channel, -1] = channel
         coords = coords.view(-1, len(out_volume) + 2)
-        row, col = unravel_index(ravel_multi_index(tuple(coords[:, dim]
-                                                         for dim in (0, -1, *range(1, coords.shape[1] - 1))),
-                                                   (in_numel, out_channels, *out_volume)), (in_numel, out_numel))
-        values = tensor.feats.view(-1)
+        row, col = unravel_index(ravel_multi_index(tuple(coords[:, dim] for dim in (0, -1, *range(1, coords.shape[1] - 1))), (in_numel, out_channels, *out_volume)), (in_numel, out_numel))
+        values = tensor.features.view(-1)
         return torch.sparse_coo_tensor(torch.stack((col, row,)), values, (out_numel, in_numel), device=values.device)
 
     def _make_eye_input(self, in_dims: SizeAny, dtype: torch.dtype, device: torch.device) -> me.SparseTensor:
         in_channels, *in_volume = in_dims if len(in_dims) > 1 else (1, *in_dims)
         in_entries = numpy.prod(in_volume)
         in_numel = in_channels * in_entries
-        coords = torch.stack(torch.meshgrid(*map(lambda end: torch.arange(int(end), dtype=torch.int32, device='cpu'),
-                                                 (in_channels, *in_volume))), dim=-1).view(-1, 1 + len(in_volume))
-        coords[:, 0] = torch.arange(len(coords), dtype=torch.int32, device='cpu')
+        coords = torch.stack(torch.meshgrid(*map(lambda end: torch.arange(int(end), dtype=torch.int32, device=device), (in_channels, *in_volume))), dim=-1).view(-1, 1 + len(in_volume))
+        coords[:, 0] = torch.arange(len(coords), dtype=torch.int32, device=device)
         feats = torch.zeros(in_numel, in_channels, dtype=dtype, device=device)
         for channel in range(in_channels):
             feats[channel*in_entries:(channel+1)*in_entries, channel] = 1
@@ -84,12 +81,16 @@ class ConformalLayers(torch.nn.Module):
     
     def _make_identity_matrix(self, size: int, dtype: torch.dtype, device: torch.device) -> SparseTensor:
         ind = torch.arange(size, dtype=torch.int64, device=device)
-        return torch.sparse_coo_tensor(torch.stack((ind, ind,)), torch.ones((size,), dtype=dtype, device=device),
-                                       (size, size), device=device)
+        return torch.sparse_coo_tensor(torch.stack((ind, ind,)), torch.ones((size,), dtype=dtype, device=device), (size, size), device=device)
 
     def _make_zero_matrix(self, size: int, dtype: torch.dtype, device: torch.device) -> SparseTensor:
-        return torch.sparse_coo_tensor(torch.empty((2, 0,), dtype=torch.int64, device=device),
-                                       torch.empty((0,), dtype=dtype, device=device), (size, size), device=device)
+        return torch.sparse_coo_tensor(torch.empty((2, 0,), dtype=torch.int64, device=device), torch.empty((0,), dtype=dtype, device=device), (size, size), device=device)
+
+    def _prune_negligible_coefficients(self, tensor: SparseTensor) -> SparseTensor:
+        mask = tensor.values().abs() < self.pruning_threshold
+        indices = tensor.indices()[:, mask]
+        values = tensor.values()[mask]
+        return torch.sparse_coo_tensor(indices, values, tensor.shape, device=values.device)
 
     def _update_cache(self, in_dims: SizeAny, dtype: torch.dtype, device: torch.device) -> CachedSignature:
         in_signature = InSignature(in_dims, dtype, str(device))
@@ -113,7 +114,7 @@ class ConformalLayers(torch.nn.Module):
                 # Compute the sparse Minkowski tensor and the custom sparse matrix (tensor) representation
                 # of the Euclidean portion o sequential matrix U^{layer}
                 sequential_matrix_me, alpha_upper = sequential((eye, alpha_upper))
-                sequential_matrix = self._from_minkowski_to_sparse_coo(sequential_matrix_me, len(eye.coords), out_dims)
+                sequential_matrix = self._from_minkowski_to_sparse_coo(sequential_matrix_me, len(eye.coordinates), out_dims)
                 # Compute the Euclidean portion of the matrix product U^{layer} . ... . U^{2} . U^{1}
                 cached_matrix = torch.sparse.mm(sequential_matrix, cached_matrix)
                 # Compute the scalar values used to define the activation matrix M^{layer}
@@ -129,26 +130,16 @@ class ConformalLayers(torch.nn.Module):
                     cached_tensor_extra = cached_tensor_extra + torch.sparse.mm(sequential_matrix_prod.t(), sequential_matrix_prod) * (cached_matrix_extra * activation_tensor_scalar)
                 if activation_matrix_scalar is not None:
                     cached_matrix_extra = cached_matrix_extra * activation_matrix_scalar
+            cached_matrix = cached_matrix.coalesce()
+            cached_tensor_extra = cached_tensor_extra.coalesce()
+            # Remove negligible coefficients from sparse tensors
+            if self.pruning_threshold is not None:
+                cached_matrix = self._prune_negligible_coefficients(cached_matrix)
+                cached_tensor_extra = self._prune_negligible_coefficients(cached_tensor_extra)
             # Set the final matrix and the final tensor encoding the Conformal Layers
             self._cached_matrix = cached_matrix
             self._cached_matrix_extra = cached_matrix_extra
             self._cached_tensor_extra = cached_tensor_extra
-            self._cached_matrix = self._cached_matrix.coalesce()
-            self._cached_tensor_extra = self._cached_tensor_extra.coalesce()
-
-            tol = 1e-5
-
-            mask = self._cached_matrix.values().abs() >= tol
-            v = self._cached_matrix.values()[mask]
-            i = self._cached_matrix.indices()[:, mask]
-            self._cached_matrix = torch.sparse_coo_tensor(i, v, self._cached_matrix.shape, device=v.device).to_dense()
-
-            mask = self._cached_tensor_extra.values().abs() >= tol
-            v = self._cached_tensor_extra.values()[mask]
-            i = self._cached_tensor_extra.indices()[:, mask]
-            self._cached_tensor_extra = torch.sparse_coo_tensor(i, v, self._cached_tensor_extra.shape,
-                                                                device=v.device).to_dense()
-
             self._cached_signature = CachedSignature(in_signature, OutSignature(out_dims,))
         return self._cached_signature
 
@@ -181,8 +172,7 @@ class ConformalLayers(torch.nn.Module):
                 # Apply the modules using the compact representation of the Conformal Layers
                 output_as_matrix = torch.mm(self._cached_matrix, input_as_matrix)
                 output_as_matrix_extra = self._cached_matrix_extra * input_as_matrix_extra
-                output_as_matrix_extra += (torch.mm(
-                    self._cached_tensor_extra, input_as_matrix) * input_as_matrix).sum(dim=0, keepdim=True)
+                output_as_matrix_extra += (torch.mm(self._cached_tensor_extra, input_as_matrix) * input_as_matrix).sum(dim=0, keepdim=True)
                 output_as_matrix /= output_as_matrix_extra
                 # Reshape the output as expected
                 output = output_as_matrix.t().view(batches, *out_dims)
@@ -190,7 +180,8 @@ class ConformalLayers(torch.nn.Module):
 
     def invalidate_cache(self) -> None:
         self._cached_signature = None
-        me.clear_global_coords_man()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
     @property
     def cached_signature(self) -> Optional[CachedSignature]:

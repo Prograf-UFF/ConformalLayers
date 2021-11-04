@@ -6,7 +6,7 @@ This repository is a implementation of ConformalLayers written in Python using [
 
 Please cite our [SIBGRAPI'21](http://arxiv.org/abs/2110.12108) paper if you use this code in your research. The paper presents a complete description of the library:
 
-```{.bib}
+```txt
 @InProceedings{sousa_et_al-sibgrapi-2021,
   author    = {Sousa, Eduardo V. and Fernandes, Leandro A. F. and Vasconcelos, Cristina N.},
   title     = {{C}onformal{L}ayers: a non-linear sequential neural network with associative layers},
@@ -20,53 +20,61 @@ Please, let [Eduardo Vera Sousa](http://www.ic.uff.br/~eduardovera), [Leandro A.
 **Contents:**
 
 - [ConformalLayers: A non-linear sequential neural network with associative layers](#conformallayers-a-non-linear-sequential-neural-network-with-associative-layers)
-  - [1. Requirements](#1-requirements)
-  - [2. How to Install ConformalLayers](#2-how-to-install-conformallayers)
-  - [3. Running Examples](#3-running-examples)
-  - [4. Running Unit Tests](#4-running-unit-tests)
-  - [5. Documentation](#5-documentation)
+  - [Requirements](#requirements)
+  - [Installation](#installation)
+    - [Python System](#python-system)
+    - [Docker](#docker)
+  - [Running Examples](#running-examples)
+  - [Running Unit Tests](#running-unit-tests)
+  - [Documentation](#documentation)
     - [Modules](#modules)
+      - [<u>Activation</u>](#uactivationu)
       - [<u>Convolution</u>](#uconvolutionu)
       - [<u>Pooling</u>](#upoolingu)
-      - [<u>Activation</u>](#uactivationu)
       - [<u>Regularization</u>](#uregularizationu)
-  - [6. License](#6-license)
+      - [<u>Utility</u>](#uutilityu)
+  - [License](#license)
 
-## 1. Requirements
+## Requirements
 
-Make sure that you have the following tools before attempting to use ConformalLayers.
-
-Required tools:
+Make sure that you have the following tools before attempting to use ConformalLayers:
 
 - [Python 3](https://www.python.org) interpreter
+- [PyTorch](https://pytorch.org/) (version >= 1.9)
+- [Minkowski Engine](https://github.com/NVIDIA/MinkowskiEngine) (version >= 0.5.4)
+- [Docker](https://www.docker.com/) (optional)
 
-- [PyTorch](https://pytorch.org/) (version >= 1.8)
+## Installation
 
-- [Minkowski Engine](https://github.com/NVIDIA/MinkowskiEngine/tree/v0.4.3) (version 0.4.3)
-
-## 2. How to Install ConformalLayers
+### Python System
 
 No magic needed here. Just run:
 
 ```bash
+git clone https://github.com/Prograf-UFF/ConformalLayers
+cd ConformalLayers
 python setup.py install
 ```
 
-But the Minkowski Engine may need some special libraries like MKL or OpenBLAS. See its [Quick Start Tutorial](https://nvidia.github.io/MinkowskiEngine/quick_start.html) for details.
+But the Minkowski Engine may need some special libraries like MKL or OpenBLAS. See its [Quick Start Tutorial](https://nvidia.github.io/MinkowskiEngine/quick_start.html) for details. Also, make sure that Minkowski Engine is not using the `CPU_ONLY` build set! That happens when you have installed the CPU version of PyTorch.
 
-Also, recall that our current implementation of the ConformalLayers requires the Minkowski Engine version 0.4.3. You can have it by running:
+### Docker
+
+Just run:
 
 ```bash
-git clone https://github.com/StanfordVL/MinkowskiEngine.git
-cd MinkowskiEngine
-git checkout tags/v0.4.3
-python setup.py install
+git clone https://github.com/Prograf-UFF/ConformalLayers
+cd ConformalLayers
+docker build -t clayers .
 ```
-Finally, make sure that Minkowski Engine is not using the `CPU_ONLY` build set! That happens when you have installed the CPU version of PyTorch.
 
-Please let us know if you have any difficulties installing the dependencies.
+Once the docker is built, check it loads ConformalLayers correctly:
 
-## 3. Running Examples
+```bash
+docker run clayers python3 -c "import cl; print(cl.__version__)"
+```
+
+## Running Examples
 
 The basic steps for running the examples of ConformalLayers look like this:
 
@@ -74,26 +82,27 @@ The basic steps for running the examples of ConformalLayers look like this:
 cd <ConformalLayers-dir>/Experiments/<experiment-name>
 ```
 
-For Experiments I and II, each file refers to the experiment described on the main paper. Thus, in order to run BaseReSProNet with FashionMNIST dataset, for example, all you have to do is:
+For Experiments I and II, each file refers to the experiment described on the main paper. Thus, in order to run `BaseReSProNet` with `FashionMNIST` dataset, for example, all you have to do is:
 
 ```bash
 python BaseReSProNet.py --dataset=FashionMNIST
 ```
 
-The values that can be used for the `dataset` argument are:
+The values that can be used with the `dataset` argument are:
 
-- MNIST
-- FashionMNIST
-- CIFAR10
+- `MNIST`
+- `FashionMNIST`
+- `CIFAR10`
 
 The loader of each dataset is described in `Experiments/utils/datasets.py` file. 
 
 Other arguments for the script files in Experiments I and II are:
-- epochs (`int` value)
-- batch_size (`int` value)
-- learning_rate (`float` value)
-- optimizer (`adam` or `rmsprop`)
-- dropout (`float` value)
+
+- `epochs` (`int` value)
+- `batch_size` (`int` value)
+- `learning_rate` (`float` value)
+- `optimizer` (`adam` or `rmsprop`)
+- `dropout` (`float` value)
 
 For Experiments III and IV, since we compute the amount of memory used, we used an external file to orchestrate the calls and make sure we have a clean environment for the next iterations. Such orchestrator is writen on the files with the suffix `_manager.py`.
 
@@ -104,15 +113,14 @@ python D3ModNetCL.py
 ```
 
 The arguments for the non-orchestrated scripts in Experiments III and IV are:
-- num_inferences (`int` value)
-- batch_size (`int` value)
-- depth (`int` value, Experiment III only)
 
+- `num_inferences` (`int` value)
+- `batch_size` (`int` value)
+- `depth` (`int` value, Experiment III only)
 
 The files in `networks` folder contains the description of each architecture used in our experiments and presents the usage of the classes and methods of our library.
 
-
-## 4. Running Unit Tests
+## Running Unit Tests
 
 The basic steps for running the unit tests of ConformalLayers look like this:
 
@@ -132,9 +140,9 @@ To run the tests for each module, run:
 python test_<module_name>.py
 ```
 
-## 5. Documentation
+## Documentation
 
-Here you find a brief description of the namespaces, macros, classes, functions, procedures, and operators available for the user. All methods are available with C++ and most of them with Python. The detailed documentation is not ready yet.
+Here you find a brief description of the classes available for the user. The detailed documentation is not ready yet.
 
 Contents:
 
@@ -146,18 +154,20 @@ Contents:
 
 ### Modules
 
-Here we present the main modules implemented in our framework. Most of the modules are used just like in PyTorch, so users with some background on this framework benefits from this implementation. For users not familiar with PyTorch, the usage still quite simple and intuitive.  
+Here we present the main modules implemented in our framework. They can be found inside `cl`. Most of the modules are used just like in PyTorch, so users with some background on this framework benefits from this implementation. For users not familiar with PyTorch, the usage still quite simple and intuitive.  
 
 | Module | Description |
 | --- | --- |
-| `Conv1d`, `Conv2d`, `Conv3d`, `ConvNd` | Convolution operation implemented for *n*-D signals |
-| `AvgPool1d`, `AvgPool2d`, `AvgPool3d`, `AvgPoolNd` | Average pooling operation implemented for *n*-D signals |
-| `BaseActivation` | The abstract class for the activation function layer. To extend the library, one shall implement this class  |
-| `ReSPro` | The layer that corresponds to the `ReSPro` activation function. Such function is a linear function with non-linear behavior that can be encoded as a tensor. The non-linearity of this function is controlled by a parameter <span>&alpha;</span> (passed as argument) that can be provided or inferred from the data |
-| `Regularization` | In this version, `Dropout` is only regularization available. In this approach, during the training phase, we randomly shut down some neurons with a probability `p`, passed as argument to this module |
+| `cl.ConformalLayers` | This class is equivalent to the `nn.Sequential` module from PyTorch |
+| `cl.Conv1d`, `cl.Conv2d`, `cl.Conv3d` | Convolution operation implemented for *n*-D signals |
+| `cl.AvgPool1d`, `cl.AvgPool2d`, `cl.AvgPool3d` | Average pooling operation implemented for *n*-D signals |
+| `cl.BaseActivation` | The abstract class for the activation function layer. To extend the library, one shall implement this class |
+| `cl.Dropout` | In this version, `cl.Dropout` is only regularization available. In this approach, during the training phase, we randomly shut down some neurons with a probability `p`, passed as argument to this module |
+| `cl.Flatten` | Flattens a contiguous range of dims into a tensor. |
+| `cl.ReSPro` | The layer that corresponds to the `ReSPro` activation function. Such function is a linear function with non-linear behavior that can be encoded as a tensor. The non-linearity of this function is controlled by a parameter <span>&alpha;</span> (passed as argument) that can be provided or inferred from the data |
 <br>
 
-These modules are composed into ConformalLayers in a very similar way to the pure PyTorch-based way. The class `ConformalLayers` plays an important role in this task, as you can see by comparing the code snippets below:
+To define a sequential network, you need to queue the layers in an instance of `cl.ConformalLayers`. This class in a very similar to the `nn.Sequential` module from PyTorch and plays an important role in this task, as you can see by comparing the code snippets below:
 
 ```python
 # This one is built with pure PyTorch
@@ -188,8 +198,8 @@ class D3ModNet(nn.Module):
 
 ```python
 # This one is built with ConformalLayers
+import cl
 import torch.nn as nn
-import ConformalLayers as cl
 
 class D3ModNetCL(nn.Module):
     def __init__(self):
@@ -214,57 +224,47 @@ class D3ModNetCL(nn.Module):
         return x
 ```
 
-They look pretty much the same code, right? That's because we've implemented `ConformalLayers` to be a transition smoothest as possible to the PyTorch user. Most of the modules has almost the same method signatures of the ones provided by PyTorch. 
-
-#### <u>Convolution</u>
-
-The convolution operation implemented in ConformalLayers on the modules `ConvNd`, `Conv1d`, `Conv2d` and `Conv3d` is almost the same one implemented on PyTorch but we do not allow bias. This is mostly due to the construction of our logic when building the representation with tensors. Although we have a few ideas on how to include bias on this representation, they are not included in the current version. The parameters are detailed below and are originally available in [PyTorch convolution documentation page](https://pytorch.org/docs/stable/generated/torch.nn.Conv1d.html#torch.nn.Conv1d). The exception here relies on the `padding_mode` parameter, that is always set to '`zeros`' in our implementation.
-
-
-- in_channels (`int`) – Number of channels in the input image
-
-- out_channels (`int`) – Number of channels produced by the convolution
-
-- kernel_size (`int` or `tuple`) – Size of the convolving kernel
-
-- stride (`int` or `tuple`, optional) – Stride of the convolution. Default: 1
-
-- padding (`int`, `tuple` or `str`, optional) – Padding added to both sides of the input. Default: 0
-
-- dilation (`int` or `tuple`, optional) – Spacing between kernel elements. Default: 1
-
-- groups (`int`, optional) – Number of blocked connections from input channels to output channels. Default: 1
-
-
-#### <u>Pooling</u>
-
-In our current implementation, we only support average pooling, which is implemented on modules `AvgPoolNd`, `AvgPool1d`, `AvgPool2d` and `AvgPool3d`. The parameters list, originally available in [PyTorch average pooling documentation page](https://pytorch.org/docs/stable/generated/torch.nn.AvgPool1d.html#torch.nn.AvgPool1d), is described below:
-
-- kernel_size – the size of the window
-
-- stride – the stride of the window. Default value is kernel_size
-
-- padding – implicit zero padding to be added on both sides
-
-- ceil_mode – when True, will use ceil instead of floor to compute the output shape
-
-- count_include_pad – when True, will include the zero-padding in the averaging calculation
+They look pretty much the same code, right? That's because we've implemented `cl.ConformalLayers` to be a transition smoothest as possible to the PyTorch user. Most of the modules has almost the same method signatures of the ones provided by PyTorch.
 
 #### <u>Activation</u>
 
-Our activation module has `ReSPro` activation function implemented natively. By using <u>Re</u>flections, <u>S</u>calings and <u>Pro</u>jections on an hypersphere in higher dimensions, we created a non-linear differentiable associative activation function that can be represented in tensor form. It has only one parameter, that controls how close to linear or non-linear is the curve. More details are available on the main paper.
+Our activation module has `cl.ReSPro` activation function implemented natively. By using <u>Re</u>flections, <u>S</u>calings and <u>Pro</u>jections on an hypersphere in higher dimensions, we created a non-linear differentiable associative activation function that can be represented in tensor form. It has only one parameter, that controls how close to linear or non-linear is the curve. More details are available on the main paper.
 
-- alpha (`float`, optional) - controls the non-linearity of the curve. If it is not provided, it's automatically estimated.
+- `alpha` (`float`, optional) - controls the non-linearity of the curve. If it is not provided, it's automatically estimated.
+
+#### <u>Convolution</u>
+
+The convolution operation implemented in ConformalLayers on the modules `cl.Conv1d`, `cl.Conv2d` and `cl.Conv3d` is almost the same one implemented on PyTorch but we do not allow bias. This is mostly due to the construction of our logic when building the representation with tensors. Although we have a few ideas on how to include bias on this representation, they are not included in the current version. The parameters are detailed below and are originally available in [PyTorch convolution documentation page](https://pytorch.org/docs/stable/generated/torch.nn.Conv1d.html). The exception here relies on the `padding_mode` parameter, that is always set to '`zeros`' in our implementation.
+
+- `in_channels` (`int`) – Number of channels in the input image.
+- `out_channels` (`int`) – Number of channels produced by the convolution.
+- `kernel_size` (`int` or `tuple`) – Size of the convolving kernel.
+- `stride` (`int` or `tuple`, optional) – Stride of the convolution. Default: 1.
+- `padding` (`int`, `tuple` or `str`, optional) – Padding added to both sides of the input. Default: 0.
+- `dilation` (`int` or `tuple`, optional) – Spacing between kernel elements. Default: 1.
+- `groups` (`int`, optional) – Number of blocked connections from input channels to output channels. Default: 1.
+
+#### <u>Pooling</u>
+
+In our current implementation, we only support average pooling, which is implemented on modules `cl.AvgPool1d`, `cl.AvgPool2d` and `cl.AvgPool3d`. The parameters list, originally available in [PyTorch average pooling documentation page](https://pytorch.org/docs/stable/generated/torch.nn.AvgPool1d.html), is described below:
+
+- `kernel_size` – the size of the window.
+- `stride` – the stride of the window. Default value is `kernel_size`.
+- `padding` – implicit zero padding to be added on both sides.
+- `ceil_mode` – when `True`, will use ceil instead of floor to compute the output shape.
+- `count_include_pad` – when `True`, will include the zero-padding in the averaging calculation.
 
 #### <u>Regularization</u>
 
-On regularization module we have `Dropout` implemented in this version. It is based on the idea of randomly shutting down some neurons in order to prevent overfitting. It takes only two parameters, listed below. This list was originally available in [PyTorch documentation page](https://pytorch.org/docs/stable/generated/torch.nn.Dropout.html?highlight=dropout#torch.nn.Dropout).  
+On regularization module we have `cl.Dropout` implemented in this version. It is based on the idea of randomly shutting down some neurons in order to prevent overfitting. It takes only two parameters, listed below. This list was originally available in [PyTorch documentation page](https://pytorch.org/docs/stable/generated/torch.nn.Dropout.html).  
 
-- p – probability of an element to be zeroed. Default: 0.5
+- `p` – probability of an element to be zeroed. Default: 0.5.
+- `inplace` – If set to True, will do this operation in-place. Default: False.
 
-- inplace – If set to True, will do this operation in-place. Default: False
+#### <u>Utility</u>
 
+The `cl.Flatten` class behaves like `nn.Flatten(start_dim=1, end_dim=-1)`. See [PyTorch documentation page](https://pytorch.org/docs/stable/generated/torch.nn.Flatten.html).
 
-## 6. License
+## License
 
 This software is licensed under the GNU General Public License v3.0. See the [`LICENSE`](LICENSE) file for details.
