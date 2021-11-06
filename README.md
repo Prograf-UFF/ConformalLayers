@@ -1,6 +1,6 @@
 # ConformalLayers: A non-linear sequential neural network with associative layers
 
-ConformalLayers is a conformal embedding of sequential layers of Convolutional Neural Networks (CNNs) that allows associativity between operations like convolution, average pooling, dropout, flattening, padding, dilation, and stride. Such embedding allows associativity between layers of CNNs, considerably reducing the amount of operations to perform inference in type of neural networks. 
+ConformalLayers is a conformal embedding of sequential layers of Convolutional Neural Networks (CNNs) that allows associativity between operations like convolution, average pooling, dropout, flattening, padding, dilation, and stride. Such embedding allows associativity between layers of CNNs, considerably reducing the number of operations to perform inference in neural networks.
 
 This repository is a implementation of ConformalLayers written in Python using [Minkowski Engine](https://github.com/NVIDIA/MinkowskiEngine) and [PyTorch](https://pytorch.org/) as backend. This implementation is a first step into the usage of activation functions, like ReSPro, that can be represented as tensors, depending on the geometry model.
 
