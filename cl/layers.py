@@ -87,7 +87,7 @@ class ConformalLayers(torch.nn.Module):
         return torch.sparse_coo_tensor(torch.empty((2, 0,), dtype=torch.int64, device=device), torch.empty((0,), dtype=dtype, device=device), (size, size), device=device)
 
     def _prune_negligible_coefficients(self, tensor: SparseTensor) -> SparseTensor:
-        mask = tensor.values().abs() < self.pruning_threshold
+        mask = tensor.values().abs() >= self.pruning_threshold
         indices = tensor.indices()[:, mask]
         values = tensor.values()[mask]
         return torch.sparse_coo_tensor(indices, values, tensor.shape, device=values.device)
