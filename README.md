@@ -10,8 +10,10 @@ Please cite our [SIBGRAPI'21](http://arxiv.org/abs/2110.12108) paper if you use 
 @InProceedings{sousa_et_al-sibgrapi-2021,
   author    = {Sousa, Eduardo V. and Fernandes, Leandro A. F. and Vasconcelos, Cristina N.},
   title     = {{C}onformal{L}ayers: a non-linear sequential neural network with associative layers},
-  booktitle = {Proceedings of the 2021 34th SIBGRAPI Conference on Graphics, Patterns and Images},
+  booktitle = {Proceedings of the 2021 34th SIBGRAPI Conference on Graphics, Patterns and Images (SIBGRAPI)},
   year      = {2021},
+  pages     = {386--393},
+  doi       = {https://doi.org/10.1109/SIBGRAPI54419.2021.00059}
 }
 ```
 
