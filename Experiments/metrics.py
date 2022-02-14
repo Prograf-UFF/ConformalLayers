@@ -1,20 +1,20 @@
+import abc
 from codecarbon import EmissionsTracker
 import torch
 
-class Metric:
-
+class Metric(metaclass=abc.ABCMeta):
     def __init__(self, **kwargs) -> None:
         pass
 
-    @abstractmethod
+    @abc.abstractmethod
     def start(self, **kwargs):
         pass
     
-    @abstractmethod
+    @abc.abstractmethod
     def stop(self, **kwargs):
         pass
 
-    @abstractmethod
+    @abc.abstractmethod
     def metrics(self):
         pass
 
@@ -22,10 +22,11 @@ class Metric:
 class CO2(Metric):
     def __init__(self, **kwargs) -> None:
         super(Metric, self).__init__()
-        self._tracker = EmissionsTracker()
+        self._frequency = kwargs.get('frequency')
         self._emissions = []
 
     def start(self, **kwargs):
+        self._tracker = EmissionsTracker(measure_power_secs = self._frequency)
         self._tracker.start()
 
     def stop(self, **kwargs):
@@ -35,7 +36,7 @@ class CO2(Metric):
 
     @property
     def metrics(self):
-        return self.emissions
+        return self._emissions
 
 
 class Time(Metric):
@@ -70,7 +71,7 @@ class Memory(Metric):
         torch.cuda.reset_peak_memory_stats()
 
     def stop(self, **kwargs):
-        measurement = torch.cuda.max_memory_allocated(device=self.device)
+        measurement = torch.cuda.max_memory_allocated(device=self._device)
         self._measurements.append(measurement)
         return measurement
 

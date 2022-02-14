@@ -7,16 +7,34 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from Experiments.utils import progress_bar
 from Experiments.networks.lenet import LeNetCL
-
+from Experiments.metrics import CO2
+from Experiments.metrics import Time
+from Experiments.metrics import Memory
+from Experiments.metrics import Accuracy
 
 def train(net, trainloader, criterion, device, optimizer):
     net.train()
     train_loss, correct, total = 0, 0, 0
+    co2_metric = CO2(frequency=0.1)
+    time_metric = Time()
+    memory_metric = Memory()
+    acc_metric = Accuracy(topk=(1,3,5))
     for batch_idx, (inputs, targets) in enumerate(trainloader):
         optimizer.zero_grad()
         inputs, targets = inputs.to(device), targets.to(device)
 
+        co2_metric.start()
+        time_metric.start()
+        memory_metric.start(device = device)
+        acc_metric.start(target=targets)
+
         outputs = net(inputs)
+
+        print("Acc: ", acc_metric.stop(output=outputs))
+        print("Memory: ", memory_metric.stop())
+        print("Time: ", time_metric.stop())
+        print("CO2: ", co2_metric.stop())
+
         loss = criterion(outputs, targets)
         loss.backward()
         optimizer.step()
