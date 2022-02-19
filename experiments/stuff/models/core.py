@@ -69,23 +69,20 @@ class ClassificationModel(pl.LightningModule, ABC):
 
     def predict_step(self, batch: Tuple[ImageBatch, TargetBatch], batch_idx: int, dataloader_idx: int = None) -> Dict[str, Any]:
         images, _ = batch
-        # Estimate elapsed time.
+        # Estimate elapsed time and batch_size.
+        torch.cuda.reset_peak_memory_stats()
         start = torch.cuda.Event(enable_timing=True)
         end = torch.cuda.Event(enable_timing=True)
         start.record()
-        _ = self(images)
+        self(images)
         end.record()
         torch.cuda.synchronize()
         elapsed_time = start.elapsed_time(end)
-        # Estimate the maximum allocated GPU memory.
-        torch.cuda.reset_peak_memory_stats()
-        _ = self(images)
-        torch.cuda.synchronize()
         max_memory = torch.cuda.max_memory_allocated(device=self.device)
         # Estimate CO2 emission in Kgs.
         emission_tracker = codecarbon.OfflineEmissionsTracker(measure_power_secs=1, output_dir=self.run_dir, save_to_file=False)
         emission_tracker.start()
-        _ = self(images)
+        self(images)
         emission = emission_tracker.stop()
         # Return the estimated values.
         return {'batch_idx': batch_idx, 'depth': self.depth, 'batch_size': len(images), 'elapsed_time': elapsed_time, 'max_memory': max_memory, 'emission': emission}

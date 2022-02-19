@@ -20,5 +20,5 @@ if __name__ == '__main__':
         subprocess.run([sys.executable, script_path, '--model', model_class.__name__, '--batch_size_range', '1000', '101000', '1000', '--wandb_entity', args.wandb_entity])
         pbar.update(1)
     for model_class in DEPTH_MODELS:
-        subprocess.run([sys.executable, script_path, '--model', model_class.__name__, '--depth_range', '1', '13', '--wandb_entity', args.wandb_entity])
+        subprocess.run([sys.executable, script_path, '--model', model_class.__name__, '--batch_size', '64', '--depth_range', '1', '13', '--wandb_entity', args.wandb_entity])
         pbar.update(1)

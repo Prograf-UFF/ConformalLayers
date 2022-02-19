@@ -61,7 +61,7 @@ class RandomDataModule(pl.LightningDataModule):
         super(RandomDataModule, self).__init__()
         self.batch_size = batch_size
         self.num_workers = num_workers
-        self.dataset = torch.utils.data.ConcatDataset([torch.utils.data.TensorDataset(torch.rand(batch_size, 3, 32, 32, dtype=torch.float32), torch.randint(10, (batch_size,), dtype=torch.long))] * num_trials)
+        self.dataset = torch.utils.data.ConcatDataset([torch.utils.data.TensorDataset(torch.rand(1, 3, 32, 32, dtype=torch.float32).expand(batch_size, -1, -1, -1), torch.randint(10, (batch_size,), dtype=torch.long))] * num_trials)
 
     def predict_dataloader(self) -> DataLoader:
         return DataLoader(self.dataset, batch_size=self.batch_size, num_workers=self.num_workers, shuffle=False)
