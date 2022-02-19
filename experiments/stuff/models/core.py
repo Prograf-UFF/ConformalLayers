@@ -80,7 +80,7 @@ class ClassificationModel(pl.LightningModule, ABC):
         elapsed_time = start.elapsed_time(end)
         max_memory = torch.cuda.max_memory_allocated(device=self.device)
         # Estimate CO2 emission in Kgs.
-        emission_tracker = codecarbon.OfflineEmissionsTracker(measure_power_secs=1, output_dir=self.run_dir, save_to_file=False)
+        emission_tracker = codecarbon.EmissionsTracker(measure_power_secs=1, output_dir=self.run_dir, save_to_file=False)
         emission_tracker.start()
         self(images)
         emission = emission_tracker.stop()

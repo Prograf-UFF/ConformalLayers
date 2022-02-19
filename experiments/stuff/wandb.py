@@ -1,7 +1,7 @@
 from .datamodules import ClassificationDataModule, RandomDataModule
 from .models import ClassificationModel
 from tqdm import tqdm
-from typing import Any, Dict, Iterable, Optional, Sequence, Tuple, Type, Union
+from typing import Any, Dict, Iterable, List, Optional, Tuple, Type, Union
 import numpy as np
 import os
 import pandas as pd
@@ -52,9 +52,8 @@ def benchmark(
         project_name: str,
         # Network and dataset arguments.
         model_class: Type[ClassificationModel],
-        batch_size: Optional[int],
-        batch_size_range: Optional[Union[Tuple[int, int], Tuple[int, int, int]]],
-        depth_range: Optional[Union[Tuple[int, int], Tuple[int, int, int]]],
+        batch_size_range: List[int],
+        depth_range: Optional[List[int]],
         # Run arguments.
         gpus: int,
         # Training arguments.
@@ -65,27 +64,22 @@ def benchmark(
     # Start a new tracked run at Weights & Biases.
     with wandb.init(config=config, entity=entity_name, project=project_name, settings=wandb.Settings(start_method='fork')) as run:
         wandb_args = run.config.as_dict()
-        results = []
         # Ensure full reproducibility.
         if seed is not None:
             pl.seed_everything(seed, workers=True)
         # Setup the trainer.
         trainer = pl.Trainer(deterministic=seed is not None, gpus=gpus, log_every_n_steps=1, logger=pl.loggers.WandbLogger(experiment=run), num_sanity_val_steps=0)
-        # Benchmark changing the batch size.
-        if batch_size_range is not None:
-            model = model_class(run_dir=run.dir, **wandb_args, **kwargs)
-            for batch_size in tqdm(range(*batch_size_range), desc='Batch size'):
-                datamodule = RandomDataModule(batch_size=batch_size, **wandb_args, **kwargs)
-                results.extend(trainer.predict(model, datamodule=datamodule))
-        # Benchmark changing network's depth.
-        elif depth_range is not None and batch_size is not None:
+        # Run experiments.
+        results = []
+        for batch_size in range(*batch_size_range):
             datamodule = RandomDataModule(batch_size=batch_size, **wandb_args, **kwargs)
-            for depth in tqdm(range(*depth_range), desc='Depth'):
-                model = model_class(depth=depth, run_dir=run.dir, **wandb_args, **kwargs)
+            if depth_range is None:
+                model = model_class(run_dir=run.dir, **wandb_args, **kwargs)
                 results.extend(trainer.predict(model, datamodule=datamodule))
-        # Invalid option.
-        else:
-            raise ValueError('One of the following set of arguments must be provided: `batch_size_range` or `depth_range` and `batch_size`.')
+            else:
+                for depth in range(*depth_range):
+                    model = model_class(depth=depth, run_dir=run.dir, **wandb_args, **kwargs)
+                    results.extend(trainer.predict(model, datamodule=datamodule))
         # Log results.
         run.log({'benchmark': wandb.Table(dataframe=pd.DataFrame(results))})
 
