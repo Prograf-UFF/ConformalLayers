@@ -17,8 +17,9 @@ if __name__ == '__main__':
     pbar = tqdm(desc='Benchmarks', total=(len(BATCH_SIZE_MODELS) + len(DEPTH_MODELS)))
     script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'benchmark.py')
     for model_class in BATCH_SIZE_MODELS:
-        subprocess.run([sys.executable, script_path, '--model', model_class.__name__, '--batch_size', '1000', '6000', '1000', '--wandb_entity', args.wandb_entity])
+        subprocess.run([sys.executable, script_path, '--model', model_class.__name__, '--batch_size', '1000', '100000', '1000', '--wandb_entity', args.wandb_entity])
         pbar.update(1)
     for model_class in DEPTH_MODELS:
         subprocess.run([sys.executable, script_path, '--model', model_class.__name__, '--batch_size', '64', '--depth', '1', '13', '--wandb_entity', args.wandb_entity])
+        subprocess.run([sys.executable, script_path, '--model', model_class.__name__, '--batch_size', '64', '--depth', '1', '2', '--wandb_entity', args.wandb_entity])
         pbar.update(1)

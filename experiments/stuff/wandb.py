@@ -2,8 +2,8 @@ from .datamodules import ClassificationDataModule, RandomDataModule
 from .models import ClassificationModel
 from tqdm import tqdm
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Type, Union
+import csv, os
 import numpy as np
-import os
 import pandas as pd
 import pytorch_lightning as pl
 import wandb
@@ -70,18 +70,18 @@ def benchmark(
         # Setup the trainer.
         trainer = pl.Trainer(deterministic=seed is not None, gpus=gpus, log_every_n_steps=1, logger=pl.loggers.WandbLogger(experiment=run), num_sanity_val_steps=0)
         # Run experiments.
-        results = []
-        for batch_size in range(*batch_size_range):
-            datamodule = RandomDataModule(batch_size=batch_size, **wandb_args, **kwargs)
-            if depth_range is None:
-                model = model_class(run_dir=run.dir, **wandb_args, **kwargs)
-                results.extend(trainer.predict(model, datamodule=datamodule))
-            else:
-                for depth in range(*depth_range):
-                    model = model_class(depth=depth, run_dir=run.dir, **wandb_args, **kwargs)
-                    results.extend(trainer.predict(model, datamodule=datamodule))
-        # Log results.
-        run.log({'benchmark': wandb.Table(dataframe=pd.DataFrame(results))})
+        with open(os.path.join(run.dir, 'benchmark.csv'), mode='w', newline='') as csv_file:
+            writer = csv.DictWriter(csv_file, fieldnames=['index', 'depth', 'batch_size', 'elapsed_time', 'max_memory', 'emission'])
+            writer.writeheader()
+            for batch_size in range(*batch_size_range):
+                datamodule = RandomDataModule(batch_size=batch_size, **wandb_args, **kwargs)
+                if depth_range is None:
+                    model = model_class(run_dir=run.dir, **wandb_args, **kwargs)
+                    writer.writerows(trainer.predict(model, datamodule=datamodule))
+                else:
+                    for depth in range(*depth_range):
+                        model = model_class(depth=depth, run_dir=run.dir, **wandb_args, **kwargs)
+                        writer.writerows(trainer.predict(model, datamodule=datamodule))
 
 
 def make_basic_benchmark_config(name: str, program: str) -> Dict[str, Any]:

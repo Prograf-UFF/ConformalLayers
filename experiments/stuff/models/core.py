@@ -84,8 +84,8 @@ class ClassificationModel(pl.LightningModule, ABC):
         emission_tracker.start()
         self(images)
         emission = emission_tracker.stop()
-        # Return the estimated values.
-        return {'batch_idx': batch_idx, 'depth': self.depth, 'batch_size': len(images), 'elapsed_time': elapsed_time, 'max_memory': max_memory, 'emission': emission}
+        # Return estimated values.
+        return {'index': batch_idx, 'depth': self.depth, 'batch_size': len(images), 'elapsed_time': elapsed_time, 'max_memory': max_memory, 'emission': emission}
 
     def test_step(self, batch: Tuple[ImageBatch, TargetBatch], batch_idx: int, dataloader_idx: int) -> Dict[str, Any]:
         # Evaluate the model on the given batch.
