@@ -42,9 +42,11 @@ Please, let [Eduardo Vera Sousa](http://www.ic.uff.br/~eduardovera), [Leandro A.
 Make sure that you have the following tools before attempting to use ConformalLayers:
 
 - [Python 3](https://www.python.org) interpreter
-- [PyTorch](https://pytorch.org/) (version >= 1.9)
+- [PyTorch](https://pytorch.org/) (version >= 1.10.2) with CUDA
 - [Minkowski Engine](https://github.com/NVIDIA/MinkowskiEngine) (version >= 0.5.4)
 - [Docker](https://www.docker.com/) (optional)
+
+The complete set of required Python modules will be installed automatically by following the instructions presented below.
 
 ## Installation
 
@@ -58,7 +60,7 @@ cd ConformalLayers
 python setup.py install
 ```
 
-But the Minkowski Engine may need some special libraries like MKL or OpenBLAS. See its [Quick Start Tutorial](https://nvidia.github.io/MinkowskiEngine/quick_start.html) for details. Also, make sure that Minkowski Engine is not using the `CPU_ONLY` build set! That happens when you have installed the CPU version of PyTorch.
+But the Minkowski Engine may need some special libraries like MKL or OpenBLAS. See its [Quick Start Tutorial](https://nvidia.github.io/MinkowskiEngine/quick_start.html) for details. Also, make sure that Minkowski Engine is not using the `CPU_ONLY` build set! It happens when you have installed the CPU version of PyTorch. So, first you have to install the [CUDA Toolkit/SDK](https://developer.nvidia.com/cuda-zone) and [PyTorch with CUDA](https://pytorch.org/get-started/locally) according to your computer platform.
 
 ### Docker
 
@@ -127,19 +129,19 @@ The files in `networks` folder contains the description of each architecture use
 The basic steps for running the unit tests of ConformalLayers look like this:
 
 ```bash
-cd <ConformalLayers-dir>/Tests
+cd <ConformalLayers-dir>/tests
 ```
 
 To run all tests, simply run
 
 ```bash
-python test_all.py
+python run_all_tests.py
 ```
 
 To run the tests for each module, run:
 
 ```bash
-python test_<module_name>.py
+python test-<module_name>.py
 ```
 
 ## Documentation

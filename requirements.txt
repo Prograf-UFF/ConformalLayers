@@ -1,0 +1,11 @@
+codecarbon>=1.2.0
+numpy>=1.21.2
+pandas>=1.4.1
+pytorch-lightning>=1.5.9
+torch>=1.10.2
+MinkowskiEngine>=0.5.4
+sklearn>=0.0
+torchmetrics>=0.7.0
+tqdm>=4.61.2
+tzlocal==2.1
+wandb>=0.12.9

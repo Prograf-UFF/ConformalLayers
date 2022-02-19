@@ -76,7 +76,7 @@ class ConformalLayers(torch.nn.Module):
         in_channels, *in_volume = in_dims if len(in_dims) > 1 else (1, *in_dims)
         in_entries = numpy.prod(in_volume)
         in_numel = in_channels * in_entries
-        coords = torch.stack(torch.meshgrid(*map(lambda end: torch.arange(int(end), dtype=torch.int32, device=device), (in_channels, *in_volume))), dim=-1).view(-1, 1 + len(in_volume))
+        coords = torch.stack(torch.meshgrid(*map(lambda end: torch.arange(int(end), dtype=torch.int32, device=device), (in_channels, *in_volume)), indexing='ij'), dim=-1).view(-1, 1 + len(in_volume))
         coords[:, 0] = torch.arange(len(coords), dtype=torch.int32, device=device)
         feats = torch.zeros(in_numel, in_channels, dtype=dtype, device=device)
         for channel in range(in_channels):

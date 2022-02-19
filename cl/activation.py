@@ -64,7 +64,7 @@ class BaseActivation(ConformalModule):
 
     @abstractmethod
     def to_tensor(self, alpha_upper: ScalarTensor) -> Tuple[Optional[ScalarTensor], Optional[ScalarTensor]]:
-        pass
+        raise NotImplementedError
 
 
 class NoActivation(BaseActivation):

@@ -1,19 +1,27 @@
-from cl import __author__, __author_email__, __version__
-import setuptools
+import os
+import pkg_resources, setuptools
 
 
+base_dir = os.path.dirname(os.path.abspath(__file__))
+
+# Set some variables related to the version of the package.
+with open(os.path.join(base_dir, 'cl', 'about.py'), 'r') as about:
+    exec(about.read())
+
+# Read dependencies.
+with open(os.path.join(base_dir, 'requirements.txt'), 'r') as fin:
+    requirements = [*map(str, pkg_resources.parse_requirements(fin.readlines()))]
+
+# Setup the package.
 setuptools.setup(
     name='ConformalLayers',
     version=__version__,
-    description='The implementation of the ConformalLayers: A non-linear sequential neural network with associative layers',
+    description=__description__,
     author=__author__,
     author_email=__author_email__,
-    url='https://github.com/Prograf-UFF/ConformalLayers/',
+    url=__url__,
     packages=setuptools.find_packages(),
     include_package_data=True,
-    install_requires=[
-        'torch>=1.8',
-        'MinkowskiEngine>=0.5.4',
-        'tqdm',  # Just for the experiments.
-    ],
-    zip_safe=False)
+    install_requires=requirements,
+    zip_safe=False,
+)
