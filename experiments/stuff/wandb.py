@@ -74,14 +74,11 @@ def benchmark(
             writer = csv.DictWriter(csv_file, fieldnames=['index', 'depth', 'batch_size', 'elapsed_time', 'max_memory', 'emission'])
             writer.writeheader()
             for batch_size in range(*batch_size_range):
-                datamodule = RandomDataModule(batch_size=batch_size, **wandb_args, **kwargs)
-                if depth_range is None:
-                    model = model_class(run_dir=run.dir, **wandb_args, **kwargs)
+                depths = [None] if depth_range is None else range(*depth_range)
+                for depth in depths:
+                    datamodule = RandomDataModule(batch_size=batch_size, **wandb_args, **kwargs)
+                    model = model_class(depth=depth, run_dir=run.dir, **wandb_args, **kwargs)
                     writer.writerows(trainer.predict(model, datamodule=datamodule))
-                else:
-                    for depth in range(*depth_range):
-                        model = model_class(depth=depth, run_dir=run.dir, **wandb_args, **kwargs)
-                        writer.writerows(trainer.predict(model, datamodule=datamodule))
 
 
 def make_basic_benchmark_config(name: str, program: str) -> Dict[str, Any]:

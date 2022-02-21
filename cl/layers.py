@@ -130,7 +130,6 @@ class ConformalLayers(torch.nn.Module):
                     cached_matrix = torch.sparse.mm(sequential_matrix, cached_matrix)
                 else:
                     cached_matrix = torch.mm(sequential_matrix, cached_matrix)
-
                 # Compute the scalar values used to define the activation matrix M^{layer}
                 # and the activation rank-3 tensor T^{layer}
                 activation_matrix_scalar, activation_tensor_scalar = activation.to_tensor(alpha_upper)
