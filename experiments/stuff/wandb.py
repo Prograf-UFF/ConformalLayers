@@ -1,11 +1,10 @@
 from .datamodules import ClassificationDataModule, RandomDataModule
 from .models import ClassificationModel
-from tqdm import tqdm
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Type, Union
-import csv, os
+import csv, gc, os
 import numpy as np
-import pandas as pd
 import pytorch_lightning as pl
+import torch
 import wandb
 
 
@@ -78,6 +77,9 @@ def benchmark(
                 for depth in depths:
                     datamodule = RandomDataModule(batch_size=batch_size, **wandb_args, **kwargs)
                     model = model_class(depth=depth, run_dir=run.dir, **wandb_args, **kwargs)
+                    gc.collect()
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
                     writer.writerows(trainer.predict(model, datamodule=datamodule))
 
 

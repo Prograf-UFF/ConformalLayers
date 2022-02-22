@@ -3,6 +3,7 @@ from .module import ConformalModule
 from .utils import DenseTensor, ScalarTensor, SparseTensor, SizeAny, ravel_multi_index, unravel_index
 from collections import namedtuple
 from typing import Iterator, List, Optional, Tuple
+import gc
 import MinkowskiEngine as me
 import numpy
 import torch
@@ -15,7 +16,7 @@ CachedSignature = namedtuple('CachedSignature', ['in_signature', 'out_signature'
 
 class ConformalLayers(torch.nn.Module):
     
-    def __init__(self, *args: ConformalModule, pruning_threshold: Optional[float] = 1e-5, keep_as_sparse : bool = False) -> None:
+    def __init__(self, *args: ConformalModule, pruning_threshold: Optional[float] = 1e-5, keep_as_sparse: bool = False) -> None:
         super(ConformalLayers, self).__init__()
         self.pruning_threshold = float(pruning_threshold) if pruning_threshold is not None else None
         self.keep_as_sparse = keep_as_sparse
@@ -67,10 +68,7 @@ class ConformalLayers(torch.nn.Module):
         coords = coords.view(-1, len(out_volume) + 2)
         row, col = unravel_index(ravel_multi_index(tuple(coords[:, dim] for dim in (0, -1, *range(1, coords.shape[1] - 1))), (in_numel, out_channels, *out_volume)), (in_numel, out_numel))
         values = tensor.features.view(-1)
-        T = torch.sparse_coo_tensor(torch.stack((col, row,)), values, (out_numel, in_numel), device=values.device)
-        if not self.keep_as_sparse:
-            T = T.to_dense()
-        return T
+        return torch.sparse_coo_tensor(torch.stack((col, row,)), values, (out_numel, in_numel), device=values.device)
 
     def _make_eye_input(self, in_dims: SizeAny, dtype: torch.dtype, device: torch.device) -> me.SparseTensor:
         in_channels, *in_volume = in_dims if len(in_dims) > 1 else (1, *in_dims)
@@ -85,16 +83,10 @@ class ConformalLayers(torch.nn.Module):
     
     def _make_identity_matrix(self, size: int, dtype: torch.dtype, device: torch.device) -> SparseTensor:
         ind = torch.arange(size, dtype=torch.int64, device=device)
-        T = torch.sparse_coo_tensor(torch.stack((ind, ind,)), torch.ones((size,), dtype=dtype, device=device), (size, size), device=device)
-        if not self.keep_as_sparse:
-            T = T.to_dense()
-        return T
+        return torch.sparse_coo_tensor(torch.stack((ind, ind,)), torch.ones((size,), dtype=dtype, device=device), (size, size), device=device)
 
     def _make_zero_matrix(self, size: int, dtype: torch.dtype, device: torch.device) -> SparseTensor:
-        T = torch.sparse_coo_tensor(torch.empty((2, 0,), dtype=torch.int64, device=device), torch.empty((0,), dtype=dtype, device=device), (size, size), device=device)
-        if not self.keep_as_sparse:
-            T = T.to_dense()
-        return T
+        return torch.sparse_coo_tensor(torch.empty((2, 0,), dtype=torch.int64, device=device), torch.empty((0,), dtype=dtype, device=device), (size, size), device=device)
 
     def _prune_negligible_coefficients(self, tensor: SparseTensor) -> SparseTensor:
         mask = tensor.values().abs() >= self.pruning_threshold
@@ -110,6 +102,9 @@ class ConformalLayers(torch.nn.Module):
             cached_matrix = self._make_identity_matrix(in_numel, dtype=dtype, device=device)
             cached_matrix_extra = torch.as_tensor(1, dtype=dtype, device=device)
             cached_tensor_extra = self._make_zero_matrix(in_numel, dtype=dtype, device=device)
+            if not self.keep_as_sparse:
+                cached_matrix = cached_matrix.to_dense()
+                cached_tensor_extra = cached_tensor_extra.to_dense()
             # Compute the Euclidean portion of the product U^{layer} . ... . U^{2} . U^{1} and
             # the scalar values of the activation functions for all values of 'layers'
             stored_layer_values: List[Tuple[SparseTensor, ScalarTensor, ScalarTensor]] = [None] * self.nlayers
@@ -129,7 +124,7 @@ class ConformalLayers(torch.nn.Module):
                 if self.keep_as_sparse:
                     cached_matrix = torch.sparse.mm(sequential_matrix, cached_matrix)
                 else:
-                    cached_matrix = torch.mm(sequential_matrix, cached_matrix)
+                    cached_matrix = torch.mm(sequential_matrix.to_dense(), cached_matrix)
                 # Compute the scalar values used to define the activation matrix M^{layer}
                 # and the activation rank-3 tensor T^{layer}
                 activation_matrix_scalar, activation_tensor_scalar = activation.to_tensor(alpha_upper)
@@ -197,6 +192,7 @@ class ConformalLayers(torch.nn.Module):
 
     def invalidate_cache(self) -> None:
         self._cached_signature = None
+        gc.collect()
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
