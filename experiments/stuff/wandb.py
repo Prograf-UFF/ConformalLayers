@@ -1,11 +1,33 @@
 from .datamodules import ClassificationDataModule, RandomDataModule
 from .models import ClassificationModel
+from pandas import DataFrame
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Type, Union
-import csv, gc, os
+import csv, gc, os, tempfile
 import numpy as np
+import pandas as pd
 import pytorch_lightning as pl
 import torch
 import wandb
+
+
+BATCH_SIZE_FIELD = 'batch_size'
+DEPTH_FIELD = 'depth'
+ELAPSED_TIME_FIELD = 'elapsed_time'
+EMISSION_FIELD = 'emission'
+INDEX_FIELD = 'index'
+MAX_MEMORY_FIELD = 'max_memory'
+MEAN_ELAPSED_TIME_FIELD = 'mean_elapsed_time'
+MEAN_EMISSION_FIELD = 'mean_emission'
+MEAN_MAX_MEMORY_FIELD = 'mean_max_memory'
+NAME_FIELD = 'name'
+STD_ELAPSED_TIME_FIELD = 'std_elapsed_time'
+STD_EMISSION_FIELD = 'std_mean_emission'
+STD_MAX_MEMORY_FIELD = 'std_max_memory'
+
+BENCHMARK_CSV_FILENAME = 'benchmark.csv'
+BENCHMARK_CSV_FIELDS = [INDEX_FIELD, DEPTH_FIELD, BATCH_SIZE_FIELD, ELAPSED_TIME_FIELD, MAX_MEMORY_FIELD, EMISSION_FIELD]
+
+BENCHMARK_SUMMARY_FIELDS = [NAME_FIELD, DEPTH_FIELD, BATCH_SIZE_FIELD, MEAN_ELAPSED_TIME_FIELD, STD_ELAPSED_TIME_FIELD, MEAN_MAX_MEMORY_FIELD, STD_MAX_MEMORY_FIELD, MEAN_EMISSION_FIELD, STD_EMISSION_FIELD]
 
 
 def _tracked_sweep_run(*,
@@ -69,8 +91,8 @@ def benchmark(
         # Setup the trainer.
         trainer = pl.Trainer(deterministic=seed is not None, gpus=gpus, log_every_n_steps=1, logger=pl.loggers.WandbLogger(experiment=run), num_sanity_val_steps=0)
         # Run experiments.
-        with open(os.path.join(run.dir, 'benchmark.csv'), mode='w', newline='') as csv_file:
-            writer = csv.DictWriter(csv_file, fieldnames=['index', 'depth', 'batch_size', 'elapsed_time', 'max_memory', 'emission'])
+        with open(os.path.join(run.dir, BENCHMARK_CSV_FILENAME), mode='w', newline='') as csv_file:
+            writer = csv.DictWriter(csv_file, fieldnames=BENCHMARK_CSV_FIELDS)
             writer.writeheader()
             for batch_size in range(*batch_size_range):
                 depths = [None] if depth_range is None else range(*depth_range)
@@ -112,3 +134,37 @@ def resume_sweep(sweep_id: str, entity_name: str, project_name: str, num_trials:
 def start_sweep(config: Dict[str, Any], entity_name: str, project_name: str, num_trials: Optional[int] = None, **kwargs: Any) -> None:
     sweep_id = wandb.sweep(config, entity=entity_name, project=project_name)
     wandb.agent(sweep_id, function=lambda: _tracked_sweep_run(**kwargs), count=num_trials)
+
+
+def summarize_benchmarks(entity_name: str, project_name: str) -> DataFrame:
+    # Start W&B API and get all runs from the target project.
+    api = wandb.Api()
+    runs = api.runs(f'{entity_name}/{project_name}')
+    # Sumarize benchmark data downloades from CSV files.
+    mean_and_std = lambda column: (column.mean().item(), column.std().item())
+    summary = []
+    for run in runs:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            run.file(BENCHMARK_CSV_FILENAME).download(root=tmp_dir, replace=True)
+            df = pd.read_csv(os.path.join(tmp_dir, BENCHMARK_CSV_FILENAME))
+        keys = df[[DEPTH_FIELD, BATCH_SIZE_FIELD]].drop_duplicates()
+        for _, (depth, batch_size) in keys.iterrows():
+            subset = df[(df[DEPTH_FIELD] == depth) & (df[BATCH_SIZE_FIELD] == batch_size) & (df[INDEX_FIELD] != 0)]
+            mean_elapsed_time, std_elapsed_time = mean_and_std(subset[ELAPSED_TIME_FIELD])
+            mean_max_memory, std_max_memory = mean_and_std(subset[MAX_MEMORY_FIELD])
+            mean_emission, std_emission = mean_and_std(subset[EMISSION_FIELD])
+            summary.append({
+                NAME_FIELD: run.config['name'],
+                DEPTH_FIELD: depth,
+                BATCH_SIZE_FIELD: batch_size,
+                MEAN_ELAPSED_TIME_FIELD: mean_elapsed_time,
+                STD_ELAPSED_TIME_FIELD: std_elapsed_time,
+                MEAN_MAX_MEMORY_FIELD: mean_max_memory,
+                STD_MAX_MEMORY_FIELD: std_max_memory,
+                MEAN_EMISSION_FIELD: mean_emission,
+                STD_EMISSION_FIELD: std_emission,
+            })
+    # Return summarized data.
+    summary = pd.DataFrame(summary, columns=BENCHMARK_SUMMARY_FIELDS)
+    summary.sort_values([NAME_FIELD, DEPTH_FIELD, BATCH_SIZE_FIELD], inplace=True)
+    return summary

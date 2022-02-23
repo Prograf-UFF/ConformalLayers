@@ -8,3 +8,5 @@ __pycache__/
 /datasets
 /wandb
 /experiments/wandb
+/results
+/experiments/results
