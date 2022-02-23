@@ -21,7 +21,7 @@ MEAN_EMISSION_FIELD = 'mean_emission'
 MEAN_MAX_MEMORY_FIELD = 'mean_max_memory'
 NAME_FIELD = 'name'
 STD_ELAPSED_TIME_FIELD = 'std_elapsed_time'
-STD_EMISSION_FIELD = 'std_mean_emission'
+STD_EMISSION_FIELD = 'std_emission'
 STD_MAX_MEMORY_FIELD = 'std_max_memory'
 
 BENCHMARK_CSV_FILENAME = 'benchmark.csv'

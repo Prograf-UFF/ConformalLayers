@@ -69,7 +69,7 @@ class ClassificationModel(pl.LightningModule, ABC):
 
     def predict_step(self, batch: Tuple[ImageBatch, TargetBatch], batch_idx: int, dataloader_idx: int = None) -> Dict[str, Any]:
         images, _ = batch
-        # Estimate elapsed time and batch_size.
+        # Estimate elapsed time and batch size.
         torch.cuda.reset_peak_memory_stats()
         start = torch.cuda.Event(enable_timing=True)
         end = torch.cuda.Event(enable_timing=True)
