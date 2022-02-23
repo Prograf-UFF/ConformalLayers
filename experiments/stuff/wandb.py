@@ -174,7 +174,7 @@ def summarize_benchmarks(entity_name: str, project_name: str) -> DataFrame:
                 STD_EMISSION_FIELD: std_emission,
             })
     summary = pd.DataFrame(summary)
-    summary.sort_values([NETWORK_FIELD, DEPTH_FIELD, BATCH_SIZE_FIELD], inplace=True)
+    summary.sort_values([NETWORK_FIELD, DEPTH_FIELD, BATCH_SIZE_FIELD], ignore_index=True, inplace=True)
     # Return summarized data.
     return summary
 
@@ -211,8 +211,8 @@ def summarize_sweeps(entity_name: str, project_name: str) -> DataFrame:
     keys = all_runs[[NETWORK_FIELD, DATASET_FIELD]].drop_duplicates()
     for _, (network, dataset) in keys.iterrows():
         subset = all_runs[(all_runs[NETWORK_FIELD] == network) & (all_runs[DATASET_FIELD] == dataset)]
-        summary.append(subset.loc[subset[TRAIN_ACCURACY_FIELD].idxmax()])
+        summary.append(subset.loc[subset[VALIDATION_ACCURACY_FIELD].idxmax()])
     summary = pd.DataFrame(summary)
-    summary.sort_values([NETWORK_FIELD, DATASET_FIELD], inplace=True)
+    summary.sort_values([NETWORK_FIELD, DATASET_FIELD, TEST_ACCURACY_FIELD_MASK.format('clean')], ignore_index=True, inplace=True)
     # Return summarized data.
     return summary

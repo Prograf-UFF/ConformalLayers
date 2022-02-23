@@ -18,7 +18,7 @@ if __name__ == '__main__':
     df = stuff.summarize_benchmarks(entity_name=args.wandb_entity, project_name=args.wandb_project)
     # Rename columns to LaTeX-friendly names.
     df.rename(columns=dict(map(lambda snake: (snake, snake_to_camel(snake)), df.columns)), inplace=True)
-    # Save complete set of results.
+    # Save the complete set of results.
     os.makedirs(args.output_dir, exist_ok=True)
     df.to_csv(os.path.join(args.output_dir, 'benchmark.csv'), index=False)
     # Save results by network.

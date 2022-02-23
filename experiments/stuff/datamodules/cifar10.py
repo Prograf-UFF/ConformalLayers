@@ -28,7 +28,11 @@ class CIFAR10(ClassificationDataModule):
 
     @classmethod
     def test_dataset_name(cls) -> List[str]:
-        return ['clean', *cls._CORRUPTIONS]
+        result = ['clean']
+        for corruption in cls._CORRUPTIONS:
+            for severity in range(1, 5 + 1):
+                result.append(f'{corruption}_{severity}')
+        return result
 
 
 class CIFAR10C(torchvision.datasets.VisionDataset):
