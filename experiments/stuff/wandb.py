@@ -11,23 +11,32 @@ import wandb
 
 
 BATCH_SIZE_FIELD = 'batch_size'
+DATASET_FIELD = 'dataset'
 DEPTH_FIELD = 'depth'
 ELAPSED_TIME_FIELD = 'elapsed_time'
 EMISSION_FIELD = 'emission'
+EPOCH_FIELD = 'epoch'
 INDEX_FIELD = 'index'
+LEARNING_RATE_FIELD = 'learging_rate'
 MAX_MEMORY_FIELD = 'max_memory'
 MEAN_ELAPSED_TIME_FIELD = 'mean_elapsed_time'
 MEAN_EMISSION_FIELD = 'mean_emission'
 MEAN_MAX_MEMORY_FIELD = 'mean_max_memory'
-NAME_FIELD = 'name'
+NETWORK_FIELD = 'network'
+OPTIMIZER_FIELD = 'optimizer'
+RUN_ID_FIELD = 'run_id'
 STD_ELAPSED_TIME_FIELD = 'std_elapsed_time'
 STD_EMISSION_FIELD = 'std_emission'
 STD_MAX_MEMORY_FIELD = 'std_max_memory'
+SWEEP_ID_FIELD = 'sweep_id'
+TEST_ACCURACY_FIELD_MASK = 'test_accuracy_{}'
+TRAIN_ACCURACY_FIELD = 'train_accuracy'
+TRAIN_LOSS_FIELD = 'train_loss'
+VALIDATION_ACCURACY_FIELD = 'validation_accuracy'
+VALIDATION_LOSS_FIELD = 'validation_loss'
 
 BENCHMARK_CSV_FILENAME = 'benchmark.csv'
 BENCHMARK_CSV_FIELDS = [INDEX_FIELD, DEPTH_FIELD, BATCH_SIZE_FIELD, ELAPSED_TIME_FIELD, MAX_MEMORY_FIELD, EMISSION_FIELD]
-
-BENCHMARK_SUMMARY_FIELDS = [NAME_FIELD, DEPTH_FIELD, BATCH_SIZE_FIELD, MEAN_ELAPSED_TIME_FIELD, STD_ELAPSED_TIME_FIELD, MEAN_MAX_MEMORY_FIELD, STD_MAX_MEMORY_FIELD, MEAN_EMISSION_FIELD, STD_EMISSION_FIELD]
 
 
 def _tracked_sweep_run(*,
@@ -139,14 +148,14 @@ def start_sweep(config: Dict[str, Any], entity_name: str, project_name: str, num
 def summarize_benchmarks(entity_name: str, project_name: str) -> DataFrame:
     # Start W&B API and get all runs from the target project.
     api = wandb.Api()
-    runs = api.runs(f'{entity_name}/{project_name}')
-    # Sumarize benchmark data downloades from CSV files.
+    runs = api.runs(f'{entity_name}/{project_name}', filters={'state': 'finished'})
+    # Sumarize benchmark data in CSV files.
     mean_and_std = lambda column: (column.mean().item(), column.std().item())
     summary = []
     for run in runs:
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            run.file(BENCHMARK_CSV_FILENAME).download(root=tmp_dir, replace=True)
-            df = pd.read_csv(os.path.join(tmp_dir, BENCHMARK_CSV_FILENAME))
+        with tempfile.TemporaryDirectory() as temp_dir:
+            run.file(BENCHMARK_CSV_FILENAME).download(root=temp_dir, replace=True)
+            df = pd.read_csv(os.path.join(temp_dir, BENCHMARK_CSV_FILENAME))
         keys = df[[DEPTH_FIELD, BATCH_SIZE_FIELD]].drop_duplicates()
         for _, (depth, batch_size) in keys.iterrows():
             subset = df[(df[DEPTH_FIELD] == depth) & (df[BATCH_SIZE_FIELD] == batch_size) & (df[INDEX_FIELD] != 0)]
@@ -154,7 +163,7 @@ def summarize_benchmarks(entity_name: str, project_name: str) -> DataFrame:
             mean_max_memory, std_max_memory = mean_and_std(subset[MAX_MEMORY_FIELD])
             mean_emission, std_emission = mean_and_std(subset[EMISSION_FIELD])
             summary.append({
-                NAME_FIELD: run.config['name'],
+                NETWORK_FIELD: run.config['name'],
                 DEPTH_FIELD: depth,
                 BATCH_SIZE_FIELD: batch_size,
                 MEAN_ELAPSED_TIME_FIELD: mean_elapsed_time,
@@ -164,7 +173,46 @@ def summarize_benchmarks(entity_name: str, project_name: str) -> DataFrame:
                 MEAN_EMISSION_FIELD: mean_emission,
                 STD_EMISSION_FIELD: std_emission,
             })
+    summary = pd.DataFrame(summary)
+    summary.sort_values([NETWORK_FIELD, DEPTH_FIELD, BATCH_SIZE_FIELD], inplace=True)
     # Return summarized data.
-    summary = pd.DataFrame(summary, columns=BENCHMARK_SUMMARY_FIELDS)
-    summary.sort_values([NAME_FIELD, DEPTH_FIELD, BATCH_SIZE_FIELD], inplace=True)
+    return summary
+
+
+def summarize_sweeps(entity_name: str, project_name: str) -> DataFrame:
+    # Start W&B API and get all runs from the target project.
+    api = wandb.Api()
+    runs = api.runs(f'{entity_name}/{project_name}', filters={'state': 'finished'})
+    # Sumarize sWeep data.
+    all_runs = []
+    for run in runs:
+        network, _, dataset = run.sweep.name.split()
+        try:
+            all_runs.append({
+                NETWORK_FIELD: network,
+                DATASET_FIELD: dataset,
+                RUN_ID_FIELD: run.id,
+                SWEEP_ID_FIELD: run.sweep.id,
+                BATCH_SIZE_FIELD: run.config['batch_size'],
+                OPTIMIZER_FIELD: run.config['optimizer'],
+                LEARNING_RATE_FIELD: run.config['learning_rate'],
+                EPOCH_FIELD: run.summary['epoch'],
+                TRAIN_LOSS_FIELD: run.summary['Loss/Train'],
+                TRAIN_ACCURACY_FIELD: run.summary['Accuracy/Train'],
+                VALIDATION_LOSS_FIELD: run.summary['Loss/Val'],
+                VALIDATION_ACCURACY_FIELD: run.summary['Accuracy/Val'],
+                **dict(map(lambda arg: (TEST_ACCURACY_FIELD_MASK.format(arg), run.summary[f'Accuracy/Test/{arg}']), run.config['test_dataset_name'])),
+            })
+        except KeyError as err:
+            print(f'Warning! Sweep name: "{run.sweep.name}", Sweep ID: {run.sweep.id}, Run ID: {run.id}, Key error: {err}')
+    all_runs = pd.DataFrame(all_runs)
+    # Keep models with best accuracy.
+    summary = []
+    keys = all_runs[[NETWORK_FIELD, DATASET_FIELD]].drop_duplicates()
+    for _, (network, dataset) in keys.iterrows():
+        subset = all_runs[(all_runs[NETWORK_FIELD] == network) & (all_runs[DATASET_FIELD] == dataset)]
+        summary.append(subset.loc[subset[TRAIN_ACCURACY_FIELD].idxmax()])
+    summary = pd.DataFrame(summary)
+    summary.sort_values([NETWORK_FIELD, DATASET_FIELD], inplace=True)
+    # Return summarized data.
     return summary

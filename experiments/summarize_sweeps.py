@@ -1,7 +1,13 @@
-from benchmark import DEFAULT_WANDB_PROJECT
-from summarize_sweeps import DEFAULT_OUTPUT, snake_to_camel
+from sweep import DEFAULT_WANDB_PROJECT
 import argparse, os
 import stuff
+
+
+DEFAULT_OUTPUT = 'results'
+
+
+def snake_to_camel(snake: str):
+    return ''.join([word.title() for word in snake.split('_')])
 
 
 if __name__ == '__main__':
@@ -15,14 +21,9 @@ if __name__ == '__main__':
     # Parse arguments.
     args = parser.parse_args()
     # Call the magic procedure and save to a CSV file.
-    df = stuff.summarize_benchmarks(entity_name=args.wandb_entity, project_name=args.wandb_project)
+    df = stuff.summarize_sweeps(entity_name=args.wandb_entity, project_name=args.wandb_project)
     # Rename columns to LaTeX-friendly names.
     df.rename(columns=dict(map(lambda snake: (snake, snake_to_camel(snake)), df.columns)), inplace=True)
     # Save complete set of results.
     os.makedirs(args.output_dir, exist_ok=True)
-    df.to_csv(os.path.join(args.output_dir, 'benchmark.csv'), index=False)
-    # Save results by network.
-    NETWORK_FIELD = snake_to_camel(stuff.wandb.NETWORK_FIELD)
-    networks = df[[NETWORK_FIELD]].drop_duplicates()
-    for _, (network,) in networks.iterrows():
-        df[(df[NETWORK_FIELD] == network)].to_csv(os.path.join(args.output_dir, f'benchmark_{network}.csv'), index=False)
+    df.to_csv(os.path.join(args.output_dir, 'sweep.csv'), index=False)
