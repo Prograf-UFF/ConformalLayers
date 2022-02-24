@@ -14,7 +14,7 @@ if __name__ == '__main__':
     group.add_argument('--output_dir', metavar='FILENAME', type=str, default=DEFAULT_OUTPUT, help='the path to the folder where resulting CSV will be written')
     # Parse arguments.
     args = parser.parse_args()
-    # Call the magic procedure and save to a CSV file.
+    # Call the magic procedure to download results from W&B.
     df = stuff.summarize_benchmarks(entity_name=args.wandb_entity, project_name=args.wandb_project)
     # Rename columns to LaTeX-friendly names.
     df.rename(columns=dict(map(lambda snake: (snake, snake_to_camel(snake)), df.columns)), inplace=True)
