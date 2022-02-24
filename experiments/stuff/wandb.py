@@ -1,5 +1,6 @@
 from .datamodules import ClassificationDataModule, RandomDataModule
 from .models import ClassificationModel
+from collections import OrderedDict
 from pandas import DataFrame
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Type, Union
 import csv, gc, os, tempfile
@@ -30,6 +31,7 @@ STD_EMISSION_FIELD = 'std_emission'
 STD_MAX_MEMORY_FIELD = 'std_max_memory'
 SWEEP_ID_FIELD = 'sweep_id'
 TEST_ACCURACY_FIELD_MASK = 'test_accuracy_{}'
+TEST_ACCURACY_FIELD_PREFIX = 'test_accuracy_' 
 TRAIN_ACCURACY_FIELD = 'train_accuracy'
 TRAIN_LOSS_FIELD = 'train_loss'
 VALIDATION_ACCURACY_FIELD = 'validation_accuracy'
@@ -162,17 +164,17 @@ def summarize_benchmarks(entity_name: str, project_name: str) -> DataFrame:
             mean_elapsed_time, std_elapsed_time = mean_and_std(subset[ELAPSED_TIME_FIELD])
             mean_max_memory, std_max_memory = mean_and_std(subset[MAX_MEMORY_FIELD])
             mean_emission, std_emission = mean_and_std(subset[EMISSION_FIELD])
-            summary.append({
-                NETWORK_FIELD: run.config['name'],
-                DEPTH_FIELD: depth,
-                BATCH_SIZE_FIELD: batch_size,
-                MEAN_ELAPSED_TIME_FIELD: mean_elapsed_time,
-                STD_ELAPSED_TIME_FIELD: std_elapsed_time,
-                MEAN_MAX_MEMORY_FIELD: mean_max_memory,
-                STD_MAX_MEMORY_FIELD: std_max_memory,
-                MEAN_EMISSION_FIELD: mean_emission,
-                STD_EMISSION_FIELD: std_emission,
-            })
+            summary.append(OrderedDict([
+                (NETWORK_FIELD, run.config['name']),
+                (DEPTH_FIELD, depth),
+                (BATCH_SIZE_FIELD, batch_size),
+                (MEAN_ELAPSED_TIME_FIELD, mean_elapsed_time),
+                (STD_ELAPSED_TIME_FIELD, std_elapsed_time),
+                (MEAN_MAX_MEMORY_FIELD, mean_max_memory),
+                (STD_MAX_MEMORY_FIELD, std_max_memory),
+                (MEAN_EMISSION_FIELD, mean_emission),
+                (STD_EMISSION_FIELD, std_emission),
+            ]))
     summary = pd.DataFrame(summary)
     summary.sort_values([NETWORK_FIELD, DEPTH_FIELD, BATCH_SIZE_FIELD], ignore_index=True, inplace=True)
     # Return summarized data.
@@ -188,21 +190,21 @@ def summarize_sweeps(entity_name: str, project_name: str) -> DataFrame:
     for run in runs:
         network, _, dataset = run.sweep.name.split()
         try:
-            all_runs.append({
-                NETWORK_FIELD: network,
-                DATASET_FIELD: dataset,
-                RUN_ID_FIELD: run.id,
-                SWEEP_ID_FIELD: run.sweep.id,
-                BATCH_SIZE_FIELD: run.config['batch_size'],
-                OPTIMIZER_FIELD: run.config['optimizer'],
-                LEARNING_RATE_FIELD: run.config['learning_rate'],
-                EPOCH_FIELD: run.summary['epoch'],
-                TRAIN_LOSS_FIELD: run.summary['Loss/Train'],
-                TRAIN_ACCURACY_FIELD: run.summary['Accuracy/Train'],
-                VALIDATION_LOSS_FIELD: run.summary['Loss/Val'],
-                VALIDATION_ACCURACY_FIELD: run.summary['Accuracy/Val'],
-                **dict(map(lambda arg: (TEST_ACCURACY_FIELD_MASK.format(arg), run.summary[f'Accuracy/Test/{arg}']), run.config['test_dataset_name'])),
-            })
+            all_runs.append(OrderedDict([
+                (NETWORK_FIELD, network),
+                (DATASET_FIELD, dataset),
+                (RUN_ID_FIELD, run.id),
+                (SWEEP_ID_FIELD, run.sweep.id),
+                (BATCH_SIZE_FIELD, run.config['batch_size']),
+                (OPTIMIZER_FIELD, run.config['optimizer']),
+                (LEARNING_RATE_FIELD, run.config['learning_rate']),
+                (EPOCH_FIELD, run.summary['epoch']),
+                (TRAIN_LOSS_FIELD, run.summary['Loss/Train']),
+                (TRAIN_ACCURACY_FIELD, run.summary['Accuracy/Train']),
+                (VALIDATION_LOSS_FIELD, run.summary['Loss/Val']),
+                (VALIDATION_ACCURACY_FIELD, run.summary['Accuracy/Val']),
+                *map(lambda arg: (TEST_ACCURACY_FIELD_MASK.format(arg), run.summary[f'Accuracy/Test/{arg}']), run.config['test_dataset_name']),
+            ]))
         except KeyError as err:
             print(f'Warning! Sweep name: "{run.sweep.name}", Sweep ID: {run.sweep.id}, Run ID: {run.id}, Key error: {err}')
     all_runs = pd.DataFrame(all_runs)
