@@ -99,6 +99,7 @@ if __name__ == '__main__':
             (stuff.wandb.DATASET_FIELD, values[stuff.wandb.DATASET_FIELD].item()),
             (CORRUPTION_FIELD, 'Clean'),
             (MEAN_CORRUPTION_ERROR_RATE_FIELD, values[CLEAN_ERROR_RATE_FIELD].item()),
+            (STD_CORRUPTION_ERROR_RATE_FIELD, 0.0),
         ])]
         for corruption_field, mean_corruption_error_rate_field, std_corruption_error_rate_field in map(lambda arg: (arg, MEAN_CORRUPTION_ERROR_RATE_FIELD_MASK.format(arg), STD_CORRUPTION_ERROR_RATE_FIELD_MASK.format(arg)), CORRUPTION_FIELDS):
             corruption_severity_fields = list(filter(lambda arg: arg.startswith(f'{stuff.wandb.TEST_ACCURACY_FIELD_PREFIX}{corruption_field}'), TEST_ACCURACY_CORRUPTION_SEVERITY_FIELDS))
