@@ -1,4 +1,5 @@
 from pandas import DataFrame
+from scipy import stats
 from sweep import DEFAULT_WANDB_PROJECT
 from typing import Optional, OrderedDict
 import argparse, os, re
@@ -13,11 +14,11 @@ CORRUPTION_FIELDS: str = None  # Late-initialization.
 CORRUPTION_FIELD = 'corruption'
 MEAN_CORRUPTION_ERROR_FIELD = 'mean_corruption_error'
 MEAN_CORRUPTION_ERROR_RATE_FIELD = 'mean_corruption_error_rate'
-MEAN_CORRUPTION_ERROR_RATE_FIELD_MASK = 'mean_{}_error_rate'
-P_VALUE_FIELD = 'p_value'
+MEAN_CORRUPTION_ERROR_RATE_FIELD_MASK = 'mean_{}_error_rate'  # The format is mean_{corruption}_error_rate.
+P_VALUE_FIELD_MASK = 'p_value_{}'  # The format is p_value_{compared-network}
 RELATIVE_MEAN_CORRUPTION_ERROR_FIELD = 'relative_mean_corruption_error'
 STD_CORRUPTION_ERROR_RATE_FIELD = 'std_corruption_error_rate'
-STD_CORRUPTION_ERROR_RATE_FIELD_MASK = 'std_{}_error_rate'
+STD_CORRUPTION_ERROR_RATE_FIELD_MASK = 'std_{}_error_rate'  # The format is std_{corruption}_error_rate.
 TEST_ACCURACY_CLEAN_FIELD = stuff.wandb.TEST_ACCURACY_FIELD_MASK.format('clean')
 TEST_ACCURACY_CORRUPTION_SEVERITY_FIELDS: str = None  # Late-initialization
 TEST_ACCURACY_FIELD_PATTERN = re.compile(stuff.wandb.TEST_ACCURACY_FIELD_MASK.format('.*'))
@@ -53,17 +54,17 @@ def append_cifar10c_corruption_metrics(df: DataFrame, baseline_network: Optional
     return pd.concat((df, clean_error_rate, mean_corruption_error_rates, std_corruption_error_rates, mean_corruption_error, mean_relative_corruption_error), axis='columns')
 
 
-def append_cifar10c_statistcs(df: DataFrame) -> DataFrame:
-    pass  #TODO Parei aqui!
+def camel_to_snake(camel: str) -> str:
+    return re.sub(r'(?<!^)(?=[A-Z])', '_', camel).lower()
+
+
+def snake_to_camel(snake: str) -> str:
+    return ''.join([word.title() for word in snake.split('_')])
 
 
 def save_latex_friendly_csv(df: DataFrame, path: str) -> None:
     df = df.rename(columns=dict(map(lambda snake: (snake, snake_to_camel(snake)), df.columns)))
     df.to_csv(path, index=False, na_rep='nan')
-
-
-def snake_to_camel(snake: str):
-    return ''.join([word.title() for word in snake.split('_')])
 
 
 if __name__ == '__main__':
@@ -94,14 +95,27 @@ if __name__ == '__main__':
     for _, (network,) in networks.iterrows():
         values = df[(df[stuff.wandb.DATASET_FIELD] == 'CIFAR10') & (df[stuff.wandb.NETWORK_FIELD] == network)]
         rows = [OrderedDict([
+            (stuff.wandb.NETWORK_FIELD, values[stuff.wandb.NETWORK_FIELD].item()),
+            (stuff.wandb.DATASET_FIELD, values[stuff.wandb.DATASET_FIELD].item()),
             (CORRUPTION_FIELD, 'Clean'),
             (MEAN_CORRUPTION_ERROR_RATE_FIELD, values[CLEAN_ERROR_RATE_FIELD].item()),
         ])]
-        for corruption_name, mean_corruption_error_rate_field, std_corruption_error_rate_field in map(lambda arg: (arg, MEAN_CORRUPTION_ERROR_RATE_FIELD_MASK.format(arg), STD_CORRUPTION_ERROR_RATE_FIELD_MASK.format(arg)), CORRUPTION_FIELDS):
+        for corruption_field, mean_corruption_error_rate_field, std_corruption_error_rate_field in map(lambda arg: (arg, MEAN_CORRUPTION_ERROR_RATE_FIELD_MASK.format(arg), STD_CORRUPTION_ERROR_RATE_FIELD_MASK.format(arg)), CORRUPTION_FIELDS):
+            corruption_severity_fields = list(filter(lambda arg: arg.startswith(f'{stuff.wandb.TEST_ACCURACY_FIELD_PREFIX}{corruption_field}'), TEST_ACCURACY_CORRUPTION_SEVERITY_FIELDS))
+            severity_accuracy = values[corruption_severity_fields].to_numpy().flatten()
+            p_value_fields = []
+            for _, (other_network,) in networks.iterrows():
+                if network != other_network:
+                    other_values = df[(df[stuff.wandb.DATASET_FIELD] == 'CIFAR10') & (df[stuff.wandb.NETWORK_FIELD] == other_network)]
+                    other_severity_accuracy = other_values[corruption_severity_fields].to_numpy().flatten()
+                    p_value = stats.wilcoxon(severity_accuracy, other_severity_accuracy, alternative='two-sided').pvalue
+                    p_value_fields.append((P_VALUE_FIELD_MASK.format(camel_to_snake(other_network)), p_value))
             rows.append(OrderedDict([
-                (CORRUPTION_FIELD, ' '.join([word.title() for word in corruption_name.split('_')])),
+                (stuff.wandb.NETWORK_FIELD, values[stuff.wandb.NETWORK_FIELD].item()),
+                (stuff.wandb.DATASET_FIELD, values[stuff.wandb.DATASET_FIELD].item()),
+                (CORRUPTION_FIELD, ' '.join([word.title() for word in corruption_field.split('_')])),
                 (MEAN_CORRUPTION_ERROR_RATE_FIELD, values[mean_corruption_error_rate_field].item()),
                 (STD_CORRUPTION_ERROR_RATE_FIELD, values[std_corruption_error_rate_field].item()),
-                (P_VALUE_FIELD, 0.0),  #TODO Parei aqui!
+                *p_value_fields,
             ]))
         save_latex_friendly_csv(DataFrame(rows), os.path.join(args.output_dir, f'error_rate_{network}.csv'))

@@ -30,7 +30,7 @@ STD_ELAPSED_TIME_FIELD = 'std_elapsed_time'
 STD_EMISSION_FIELD = 'std_emission'
 STD_MAX_MEMORY_FIELD = 'std_max_memory'
 SWEEP_ID_FIELD = 'sweep_id'
-TEST_ACCURACY_FIELD_MASK = 'test_accuracy_{}'
+TEST_ACCURACY_FIELD_MASK = 'test_accuracy_{}'  # The format is {prefix}{corruption}_{level}, where 1 <= level <= 5.
 TEST_ACCURACY_FIELD_PREFIX = 'test_accuracy_' 
 TRAIN_ACCURACY_FIELD = 'train_accuracy'
 TRAIN_LOSS_FIELD = 'train_loss'
