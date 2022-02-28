@@ -120,7 +120,7 @@ if __name__ == '__main__':
                 if network != other_network:
                     other_values = df_cifar[df_cifar[stuff.wandb.NETWORK_FIELD] == other_network]
                     other_severity_accuracy = other_values[corruption_severity_fields].to_numpy().flatten()
-                    p_value = stats.wilcoxon(severity_accuracy, other_severity_accuracy, alternative='two-sided').pvalue
+                    p_value = stats.ttest_ind_from_stats(values[mean_corruption_error_rate_field].item(), values[std_corruption_error_rate_field].item(), len(corruption_severity_fields), other_values[mean_corruption_error_rate_field].item(), other_values[std_corruption_error_rate_field].item(), len(corruption_severity_fields), equal_var=False, alternative='two-sided').pvalue
                     p_value_fields.append((P_VALUE_FIELD_MASK.format(camel_to_snake(other_network)), p_value))
             rows.append(OrderedDict([
                 (stuff.wandb.NETWORK_FIELD, values[stuff.wandb.NETWORK_FIELD].item()),
