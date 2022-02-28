@@ -125,7 +125,9 @@ def make_basic_sweep_config(name: str, program: str) -> Dict[str, Any]:
 
 
 def make_parameter_configuration(name: str, value: Union[Any, Tuple[Any, Any], Tuple[Any, Any, Any]]) -> Dict[str, Dict[str, Any]]:
-    if isinstance(value, set):
+    if isinstance(value, str):
+        return {name: {'value': value}}
+    elif isinstance(value, set):
         return {name: {'values': list(sorted(value))}}
     else:
         value = tuple(value) if isinstance(value, Iterable) else (value,)
@@ -188,7 +190,7 @@ def summarize_sweeps(entity_name: str, project_name: str) -> DataFrame:
     # Sumarize sWeep data.
     all_runs = []
     for run in runs:
-        network, _, dataset = run.sweep.name.split()
+        network, _, dataset, *_ = run.sweep.name.split()
         try:
             all_runs.append(OrderedDict([
                 (NETWORK_FIELD, network),

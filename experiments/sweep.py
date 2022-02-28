@@ -29,6 +29,8 @@ def main(args: argparse.Namespace) -> None:
         # Setup.
         config = stuff.make_basic_sweep_config(name=args.wandb_start, program=os.path.basename(__file__))
         config['metric'].update(model_class.wandb_metric())
+        config['parameters'].update(stuff.make_parameter_configuration('model', args.model))
+        config['parameters'].update(stuff.make_parameter_configuration('datamodule', args.datamodule))
         config['parameters'].update(stuff.make_parameter_configuration('batch_size', set(DEFAULT_BATCH_SIZE_VALUES)))
         config['parameters'].update(stuff.make_parameter_configuration('learning_rate', tuple(args.learning_rate_range)))
         config['parameters'].update(stuff.make_parameter_configuration('optimizer', set(DEFAULT_OPTIMIZER_VALUES)))
