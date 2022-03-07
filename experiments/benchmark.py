@@ -51,8 +51,8 @@ if __name__ == '__main__':
     MODEL_CHOICES = [name for name, obj in inspect.getmembers(stuff.models) if inspect.isclass(obj) and issubclass(obj, stuff.models.ClassificationModel) and not inspect.isabstract(obj)]
     group = parser.add_argument_group('network arguments')
     group.add_argument('--model', metavar='CLASS_NAME', type=str, choices=MODEL_CHOICES, required=True, help='the name of the class of the model used in the benchmark')
-    group.add_argument('--batch_size', metavar='<VALUE | START STOP [STEP]>', type=int, nargs='*', required=True, help='the value or range of values assumed by the size of the batch')
-    group.add_argument('--depth', metavar='<VALUE | START STOP [STEP]>', type=int, nargs='*', help='the value or range of values assumed by the network''s depth (used only with models having varying depth)')
+    group.add_argument('--batch_size', metavar='VALUE | START STOP [STEP]', type=int, nargs='*', required=True, help='the value or range of values assumed by the size of the batch')
+    group.add_argument('--depth', metavar='VALUE | START STOP [STEP]', type=int, nargs='*', help='the value or range of values assumed by the network''s depth (used only with models having varying depth)')
     # Weights & Biases arguments.
     group = parser.add_argument_group('logger arguments')
     group.add_argument('--wandb_entity', metavar='NAME', type=str, required=True, help='the name of the entity in the Weights & Biases framework')

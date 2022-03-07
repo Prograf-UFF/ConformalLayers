@@ -24,6 +24,7 @@ MEAN_ELAPSED_TIME_FIELD = 'mean_elapsed_time'
 MEAN_EMISSION_FIELD = 'mean_emission'
 MEAN_MAX_MEMORY_FIELD = 'mean_max_memory'
 NETWORK_FIELD = 'network'
+NUM_SAMPLES_FIELD = 'num_samples'
 OPTIMIZER_FIELD = 'optimizer'
 RUN_ID_FIELD = 'run_id'
 STD_ELAPSED_TIME_FIELD = 'std_elapsed_time'
@@ -163,6 +164,7 @@ def summarize_benchmarks(entity_name: str, project_name: str) -> DataFrame:
         keys = df[[DEPTH_FIELD, BATCH_SIZE_FIELD]].drop_duplicates()
         for _, (depth, batch_size) in keys.iterrows():
             subset = df[(df[DEPTH_FIELD] == depth) & (df[BATCH_SIZE_FIELD] == batch_size) & (df[INDEX_FIELD] != 0)]
+            num_samples = len(subset)
             mean_elapsed_time, std_elapsed_time = mean_and_std(subset[ELAPSED_TIME_FIELD])
             mean_max_memory, std_max_memory = mean_and_std(subset[MAX_MEMORY_FIELD])
             mean_emission, std_emission = mean_and_std(subset[EMISSION_FIELD])
@@ -170,6 +172,7 @@ def summarize_benchmarks(entity_name: str, project_name: str) -> DataFrame:
                 (NETWORK_FIELD, run.config['name']),
                 (DEPTH_FIELD, depth),
                 (BATCH_SIZE_FIELD, batch_size),
+                (NUM_SAMPLES_FIELD, num_samples),
                 (MEAN_ELAPSED_TIME_FIELD, mean_elapsed_time),
                 (STD_ELAPSED_TIME_FIELD, std_elapsed_time),
                 (MEAN_MAX_MEMORY_FIELD, mean_max_memory),
