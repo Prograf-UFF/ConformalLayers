@@ -36,7 +36,7 @@ class ConformalModule(torch.nn.Module):
 
     @abstractmethod
     def output_dims(self, *in_size: int) -> SizeAny:
-        pass
+        raise NotImplementedError
 
     @property
     def name(self) -> Optional[str]:
@@ -59,7 +59,7 @@ class WrappedMinkowskiStridedOperation(torch.nn.Module):
 
     @abstractmethod
     def _apply_function(self, input: me.SparseTensor, alpha_upper: ScalarTensor, out_coordinate_map_key: me.CoordinateMapKey) -> Tuple[DenseTensor, ScalarTensor]:
-        pass
+        raise NotImplementedError
 
     def forward(self, input: ForwardMinkowskiData) -> ForwardMinkowskiData:
         input, alpha_upper = input
@@ -77,7 +77,7 @@ class WrappedMinkowskiStridedOperation(torch.nn.Module):
                                        *map(lambda start, end, step: torch.arange(int(start), int(end), int(step), dtype=torch.int32, device=in_coords.device),
                                             torch.max(index_start, (torch.div(indices.min(0)[0] + kernel_start_offset - index_start, stride, rounding_mode='floor')) * stride + index_start),
                                             torch.min(index_end, (torch.div(indices.max(0)[0] + kernel_end_offset - index_start, stride, rounding_mode='floor') + 1) * stride + index_start),
-                                            stride)), dim=-1).view(-1, 1 + input.dimension)
+                                            stride), indexing='ij'), dim=-1).view(-1, 1 + input.dimension)
             for batch, indices in enumerate(indices_per_batch)), dim=0)
         # Evaluate the module
         out_coordinate_map_key = me.CoordinateMapKey([1 for _ in range(out_coords.size(1) - 1)], '')

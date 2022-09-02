@@ -1,0 +1,5 @@
+__author__ = 'Eduardo V. Sousa, Leandro A. F. Fernandes, Cristina N. Vasconcelos'
+__author_email__ = 'eduardovera@ic.uff.br, laffernandes@ic.uff.br, crisnv@ic.uff.br'
+__description__ = 'The implementation of the ConformalLayers: A non-linear sequential neural network with associative layers'
+__url__ = 'https://github.com/Prograf-UFF/ConformalLayers/'
+__version__ = '1.2.0'
