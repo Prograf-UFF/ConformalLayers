@@ -42,34 +42,37 @@ class CLNet(object):
                     stride=module.stride,
                     padding=module.padding))
             elif isinstance(module, torch.nn.Conv1d):
-                assert module.groups == 1 and not module.bias and module.padding_mode == 'zeros'
+                assert not module.bias and module.padding_mode == 'zeros'
                 modules.append(cl.Conv1d(
                     in_channels=module.in_channels,
                     out_channels=module.out_channels,
                     kernel_size=module.kernel_size,
                     stride=module.stride,
                     padding=module.padding,
-                    dilation=module.dilation))
+                    dilation=module.dilation,
+                    groups=module.groups))
                 modules[-1].weight.data.copy_(module.weight.data)
             elif isinstance(module, torch.nn.Conv2d):
-                assert module.groups == 1 and not module.bias and module.padding_mode == 'zeros'
+                assert not module.bias and module.padding_mode == 'zeros'
                 modules.append(cl.Conv2d(
                     in_channels=module.in_channels,
                     out_channels=module.out_channels,
                     kernel_size=module.kernel_size,
                     stride=module.stride,
                     padding=module.padding,
-                    dilation=module.dilation))
+                    dilation=module.dilation,
+                    groups=module.groups))
                 modules[-1].weight.data.copy_(module.weight.data)
             elif isinstance(module, torch.nn.Conv3d):
-                assert module.groups == 1 and not module.bias and module.padding_mode == 'zeros'
+                assert not module.bias and module.padding_mode == 'zeros'
                 modules.append(cl.Conv3d(
                     in_channels=module.in_channels,
                     out_channels=module.out_channels,
                     kernel_size=module.kernel_size,
                     stride=module.stride,
                     padding=module.padding,
-                    dilation=module.dilation))
+                    dilation=module.dilation,
+                    groups=module.groups))
                 modules[-1].weight.data.copy_(module.weight.data)
             elif isinstance(module, torch.nn.Flatten):
                 assert module.start_dim == 1 and module.end_dim == -1
