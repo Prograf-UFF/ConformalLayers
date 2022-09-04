@@ -27,7 +27,7 @@ class WrappedMinkowskiConvolution(WrappedMinkowskiStridedOperation):
             # Compute the resulting feature.
             out_feats = torch.cat([self._function.apply(input.features[:, in_channels_start:in_channels_start+in_channels_step], kernel[:, :, out_channels_start:out_channels_start+out_channels_step].contiguous(), self._kernel_generator, ConvolutionMode.DEFAULT, input.coordinate_map_key, out_coordinate_map_key, input._manager) for in_channels_start, out_channels_start in zip(range(0, self.owner.in_channels, in_channels_step), range(0, self.owner.out_channels, out_channels_step))], dim=1)
         # Apply the Young's convolution inequality with p = 2, q = 1, and r = 2 (https://en.m.wikipedia.org/wiki/Young%27s_convolution_inequality).
-        alpha_upper = alpha_upper * torch.linalg.norm(self.owner.weight.view(self.owner.out_channels, self.owner.in_channels, -1), ord=1, dim=2).sum(dim=0).max()
+        alpha_upper = alpha_upper * torch.linalg.norm(self.owner.weight.view(self.owner.out_channels, self.owner.in_channels // self.owner.groups, -1), ord=1, dim=2).sum(dim=0).max()
         # Return results.
         return out_feats, alpha_upper
 
