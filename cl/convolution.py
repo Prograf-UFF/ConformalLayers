@@ -57,7 +57,7 @@ class ConvNd(ConformalModule):
             (input, input_extra), alpha_upper = input
             output = self._torch_module(input)
             # Apply the Young's convolution inequality with p = 2, q = 1, and r = 2 (https://en.m.wikipedia.org/wiki/Young%27s_convolution_inequality).
-            alpha_upper = alpha_upper * torch.linalg.norm(self.weight.view(self.out_channels, self.in_channels, -1), ord=1, dim=2).sum(dim=0).max()
+            alpha_upper = alpha_upper * torch.linalg.norm(self.weight.view(self.out_channels, self.in_channels // self.groups, -1), ord=1, dim=2).sum(dim=0).max()
             return (output, input_extra), alpha_upper
         else:
             return self._minkowski_module(input)
