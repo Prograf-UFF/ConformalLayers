@@ -21,8 +21,8 @@ def main():
     for dimension, NativeModule in zip(DIMENSIONS, NATIVE_MODULES):
         for batches in range(BATCHES_START, BATCHES_END):
             for groups in range(GROUPS_START, GROUPS_END):
-                for in_channels in range(IN_CHANNELS_START * groups, IN_CHANNELS_END * groups):
-                    for out_channels in range(OUT_CHANNELS_START * groups, OUT_CHANNELS_END * groups):
+                for in_channels in range(IN_CHANNELS_START * groups, IN_CHANNELS_END * groups, groups):
+                    for out_channels in range(OUT_CHANNELS_START * groups, OUT_CHANNELS_END * groups, groups):
                         for in_volume in numpy.ndindex(*numpy.full((dimension,), IN_VOLUME_END - IN_VOLUME_START, dtype=int)):
                             in_volume = numpy.add(in_volume, IN_VOLUME_START)
                             for kernel_size in numpy.ndindex(*(in_volume - 1)):
