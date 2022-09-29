@@ -5,6 +5,7 @@ __all__ = [
     'Conv1d', 'Conv2d', 'Conv3d',
     'Dropout',
     'Flatten',
+    'Identity',
     'ReSPro',
 ]
 
@@ -12,6 +13,7 @@ from .about import __author__, __author_email__, __description__, __url__, __ver
 from .activation import ReSPro
 from .convolution import Conv1d, Conv2d, Conv3d
 from .layers import ConformalLayers
+from .linear import Identity
 from .pooling import AvgPool1d, AvgPool2d, AvgPool3d
 from .regularization import Dropout
 from .utility import Flatten

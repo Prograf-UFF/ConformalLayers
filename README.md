@@ -32,6 +32,7 @@ Please, let [Eduardo Vera Sousa](http://www.ic.uff.br/~eduardovera), [Leandro A.
     - [Modules](#modules)
       - [<u>Activation</u>](#uactivationu)
       - [<u>Convolution</u>](#uconvolutionu)
+      - [<u>Linear</u>](#ulinearu)
       - [<u>Pooling</u>](#upoolingu)
       - [<u>Regularization</u>](#uregularizationu)
       - [<u>Utility</u>](#uutilityu)
@@ -142,6 +143,7 @@ Contents:
 
 - [Modules](#modules)
   - [Convolution](#convolution)
+  - [Linear](#linear)
   - [Pooling](#pooling)
   - [Activation](#activation)
   - [Regularization](#regularization)
@@ -158,6 +160,7 @@ Here we present the main modules implemented in our framework. They can be found
 | `cl.BaseActivation` | The abstract class for the activation function layer. To extend the library, one shall implement this class |
 | `cl.Dropout` | In this version, `cl.Dropout` is only regularization available. In this approach, during the training phase, we randomly shut down some neurons with a probability `p`, passed as argument to this module |
 | `cl.Flatten` | Flattens a contiguous range of dims into a tensor. |
+| `cl.Identity` | A placeholder identity operator that is argument-insensitive. |
 | `cl.ReSPro` | The layer that corresponds to the `ReSPro` activation function. Such function is a linear function with non-linear behavior that can be encoded as a tensor. The non-linearity of this function is controlled by a parameter <span>&alpha;</span> (passed as argument) that can be provided or inferred from the data |
 <br>
 
@@ -237,6 +240,10 @@ The convolution operation implemented in ConformalLayers on the modules `cl.Conv
 - `padding` (`int`, `tuple` or `str`, optional) – Padding added to both sides of the input. Default: 0.
 - ` ` (`int` or `tuple`, optional) – Spacing between kernel elements. Default: 1.
 - `groups` (`int`, optional) – Number of blocked connections from input channels to output channels. Default: 1.
+
+#### <u>Linear</u>
+
+The library includes the `cl.Identity` module, a placeholder identity operator that is argument-insensitive. Refer to [PyTorch documentation page](https://pytorch.org/docs/stable/generated/torch.nn.Identity.html) for details.
 
 #### <u>Pooling</u>
 

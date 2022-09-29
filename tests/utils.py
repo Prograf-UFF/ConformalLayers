@@ -1,3 +1,7 @@
+#TODO Debug
+import os, sys
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 from typing import Tuple
 import cl
 import time, warnings
@@ -77,6 +81,13 @@ class CLNet(object):
             elif isinstance(module, torch.nn.Flatten):
                 assert module.start_dim == 1 and module.end_dim == -1
                 modules.append(cl.Flatten())
+            elif isinstance(module, torch.nn.Identity):
+                modules.append(cl.Identity())
+            elif isinstance(module, torch.nn.Linear):
+                assert not module.bias
+                modules.append(cl.Linear(
+                    in_features=module.in_features,
+                    out_features=module.out_features))
             else:
                 raise NotImplementedError()
         self.modules = cl.ConformalLayers(*modules, pruning_threshold=None)
