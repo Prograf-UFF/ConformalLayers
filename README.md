@@ -13,18 +13,22 @@ Please cite our [SIBGRAPI'21](http://arxiv.org/abs/2110.12108) and [Pattern Reco
   booktitle = {Proceedings of the 2021 34th SIBGRAPI Conference on Graphics, Patterns and Images},
   year      = {2021},
   pages     = {386--393},
-  doi       = {https://doi.org/10.1109/SIBGRAPI54419.2021.00059}
+  doi       = {https://doi.org/10.1109/SIBGRAPI54419.2021.00059},
+  url     = {https://github.com/Prograf-UFF/ConformalLayers},
 }
 
-@Article{sousa_et_al-prletters-2023,
-  title = {An analysis of {C}onformal{L}ayers' robustness to corruptions in natural images},
+@Article{vera_et_al-prl-166(1)-2023,
+  author  = {Vera, Eduardo and Vasconcelos, Cristina Nader and Fernandes, Leandro A. F.},
+  title   = {An analysis of {C}onformal{L}ayers' robustness to corruptions in natural images},
   journal = {Pattern Recognition Letters},
-  volume = {166},
-  pages = {190-197},
-  year = {2023},
-  issn = {0167-8655},
-  doi = {https://doi.org/10.1016/j.patrec.2022.11.002}
+  year    = {2023},
+  volume  = {166},
+  number  = {1},
+  pages   = {190--197},
+  doi     = {https://doi.org/10.1016/j.patrec.2022.11.002},
+  url     = {https://github.com/Prograf-UFF/ConformalLayers},
 }
+
 ```
 
 Please, let [Eduardo Vera Sousa](http://www.ic.uff.br/~eduardovera), [Leandro A. F. Fernandes](http://www.ic.uff.br/~laffernandes) and [Cristina Nader Vasconcelos](http://www.ic.uff.br/~crisnv/index.php) know if you want to contribute to this project. Also, do not hesitate to contact them if you encounter any problems.
