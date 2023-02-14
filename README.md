@@ -17,7 +17,7 @@ Please cite our [SIBGRAPI'21](http://arxiv.org/abs/2110.12108) and [Pattern Reco
   url     = {https://github.com/Prograf-UFF/ConformalLayers},
 }
 
-@Article{vera_et_al-prl-166(1)-2023,
+@Article{sousa_et_al-prl-166(1)-2023,
   author  = {Sousa, Eduardo V. and Vasconcelos, Cristina N. and Fernandes, Leandro A. F.},
   title   = {An analysis of {C}onformal{L}ayers' robustness to corruptions in natural images},
   journal = {Pattern Recognition Letters},
