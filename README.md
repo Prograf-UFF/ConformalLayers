@@ -18,7 +18,7 @@ Please cite our [SIBGRAPI'21](http://arxiv.org/abs/2110.12108) and [Pattern Reco
 }
 
 @Article{vera_et_al-prl-166(1)-2023,
-  author  = {Vera, Eduardo and Vasconcelos, Cristina Nader and Fernandes, Leandro A. F.},
+  author  = {Sousa, Eduardo V. and Vasconcelos, Cristina N. and Fernandes, Leandro A. F.},
   title   = {An analysis of {C}onformal{L}ayers' robustness to corruptions in natural images},
   journal = {Pattern Recognition Letters},
   year    = {2023},
